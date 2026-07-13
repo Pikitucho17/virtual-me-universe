@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes, viewport-fit=cover">
+    <title>Virtual Me · Universe</title>
+    <style>
+      html, body {
+        margin: 0; padding: 0; border: 0;
+        width: 100%; height: 100%;
+        background: #05070f;
+        overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-user-select: none; user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #unity-canvas {
+        position: fixed; top: 0; left: 0;
+        width: 100%; height: 100%;
+        display: block;
+        background: #05070f;
+        touch-action: none;
+      }
+      #boot {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        background: #05070f;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        transition: opacity .45s ease;
+        z-index: 10;
+      }
+      #boot .kicker {
+        font-size: 11px; font-weight: 900; letter-spacing: 3px;
+        color: #00E5FF; margin-bottom: 18px;
+      }
+      #bar {
+        width: 180px; height: 3px; border-radius: 2px;
+        background: rgba(0, 229, 255, 0.15); overflow: hidden;
+      }
+      #fill { width: 0%; height: 100%; background: #00E5FF; transition: width .2s ease; }
+      #err {
+        position: fixed; inset: 0; display: none;
+        align-items: center; justify-content: center;
+        padding: 28px; text-align: center;
+        background: #05070f; color: #8a93a8;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px; line-height: 20px; z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+
+    <div id="boot">
+      <div class="kicker">ENTERING THE UNIVERSE</div>
+      <div id="bar"><div id="fill"></div></div>
+    </div>
+    <div id="err"><span id="errtext"></span></div>
+
+    <script src="Build/Web.loader.js"></script>
+    <script>
+      var boot = document.getElementById('boot');
+      var fill = document.getElementById('fill');
+
+      createUnityInstance(document.querySelector('#unity-canvas'), {
+        arguments: [],
+        dataUrl: 'Build/Web.data.unityweb',
+        frameworkUrl: 'Build/Web.framework.js.unityweb',
+        codeUrl: 'Build/Web.wasm.unityweb',
+        streamingAssetsUrl: 'StreamingAssets',
+        companyName: 'MoneyMapGroup',
+        productName: 'Virtual Me Universe',
+        productVersion: '0.1.0',
+        matchWebGLToCanvasSize: true,
+        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      }, function (progress) {
+        fill.style.width = (progress * 100) + '%';
+      }).then(function () {
+        boot.style.opacity = '0';
+        setTimeout(function () { boot.style.display = 'none'; }, 500);
+        try {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'galaxy-ready' }));
+          }
+        } catch (e) {}
+      }).catch(function (message) {
+        boot.style.display = 'none';
+        document.getElementById('errtext').textContent =
+          'The galaxy could not load. Check your connection and try again.';
+        document.getElementById('err').style.display = 'flex';
+        try {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'galaxy-error', message: String(message) }));
+          }
+        } catch (e) {}
+      });
+    </script>
+  </body>
+</html>

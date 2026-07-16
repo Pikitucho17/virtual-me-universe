@@ -1,4 +1,34 @@
 <!DOCTYPE html>
+<!--
+  ============================================================================
+  VIRTUAL ME · UNIVERSE — custom Web template.
+
+  WHY THIS EXISTS: a Web build used to overwrite Builds/Web/index.html with
+  Unity's default (grey 960x600 canvas, Unity chrome, no app messaging). The
+  good file had to be restored BY HAND after every single build, and forgetting
+  once silently breaks the Universe tab. As a template, Unity emits this file
+  automatically on every build and the trap is gone.
+
+  Select it at: Player Settings ▸ Resolution and Presentation ▸ WebGL Template.
+
+  DO NOT "simplify" the two postMessage calls: UniverseTab.js LISTENS for
+  galaxy-ready / galaxy-error. Without galaxy-error, a galaxy that fails to load
+  hangs on the boot screen forever instead of showing "try again".
+
+  FILENAMES ARE HARDCODED ON PURPOSE ("Web.*"). Unity template macros would be
+  more elegant, but this file is byte-identical to the loader already proven in
+  production, and a wrong macro name costs a 12-minute build to discover. The
+  build target has always been "Web". If it is ever renamed, update the four
+  Build/Web.* paths below — that is the whole maintenance cost.
+
+  WARNING: Unity's Preprocess.js evaluates triple-brace macro expressions ANYWHERE
+  in this file, INCLUDING inside HTML comments. An empty example one written here
+  to document the syntax killed a build with:
+      Preprocessor error "TypeError: Cannot read property 'toString' of undefined"
+      ... when evaluating expression " "
+  Never type a macro expression in this file unless it is a real, named one.
+  ============================================================================
+-->
 <html lang="en-us">
   <head>
     <meta charset="utf-8">

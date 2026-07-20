@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THRESHOLD — a Virtual Me passport demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<style>
+  :root{ --bg:#03060b; --panel:#0a0f18; --line:#1c2636; --ink:#e8eefc; --dim:#8b98b0;
+    --blue:#5B8CFF; --cyan:#00E5FF; --violet:#8B5CF6; --green:#39d98a; --amber:#ffb84d; --red:#ff6b6b; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;overflow:hidden}
+  #c{position:fixed;inset:0;display:block}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;
+    background:radial-gradient(1000px 700px at 60% -10%,#0b1830 0%,transparent 60%),var(--bg)}
+  .wrap{max-width:760px;padding:26px 22px;width:100%}
+  .brand{letter-spacing:.32em;font-size:12px;color:var(--dim);text-transform:uppercase}
+  .brand b{color:var(--cyan)}
+  h1{font-size:32px;margin:12px 0 6px;font-weight:800;
+    background:linear-gradient(90deg,#fff,#8fb4ff 60%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);font-size:15px;line-height:1.55;max-width:560px}
+  .card{background:linear-gradient(180deg,var(--panel),#0d1420);border:1px solid var(--line);
+    border-radius:16px;padding:22px;margin-top:18px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+  .qrbox{width:174px;height:174px;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;padding:12px}
+  .qrbox img,.qrbox canvas{width:150px;height:150px;display:block}
+  .qrbox .ph{color:#0a0f18;font-family:ui-monospace,monospace;font-size:12px;text-align:center}
+  .status{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600}
+  .ping{width:11px;height:11px;border-radius:50%;background:var(--cyan);animation:ping 1.4s infinite}
+  @keyframes ping{0%{box-shadow:0 0 0 0 rgba(0,229,255,.55)}70%{box-shadow:0 0 0 13px rgba(0,229,255,0)}100%{box-shadow:0 0 0 0 rgba(0,229,255,0)}}
+  .safe{margin:14px 0 0;padding-left:18px;color:var(--dim);font-size:13px;line-height:1.75}
+  .qrcap{font-family:ui-monospace,monospace;color:var(--dim);font-size:12px;text-align:center;margin-top:8px}
+  .foot{margin-top:22px;color:#54607a;font-size:12px}
+  /* in-game HUD */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;display:none}
+  #statbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;
+    background:rgba(6,10,18,.72);border:1px solid var(--line);border-radius:12px;padding:8px 10px;backdrop-filter:blur(6px)}
+  .sb{min-width:52px;text-align:center}
+  .sb .k{font-size:10px;color:var(--dim);letter-spacing:.12em}
+  .sb .v{font-size:17px;font-weight:800}
+  #who{position:absolute;top:16px;left:16px;font-size:13px;color:var(--dim)}
+  #who b{color:var(--cyan)}
+  #chips{position:absolute;top:44px;left:16px;max-width:230px}
+  .chip{display:inline-block;font-size:10px;background:#171033;color:#c3b0ff;border:1px solid #3a2b66;border-radius:20px;padding:2px 8px;margin:3px 3px 0 0}
+  #prompt{position:absolute;bottom:74px;left:50%;transform:translateX(-50%);text-align:center;min-width:280px;max-width:520px;
+    background:rgba(6,10,18,.82);border:1px solid var(--line);border-radius:14px;padding:12px 16px;backdrop-filter:blur(6px);opacity:0;transition:.15s}
+  #prompt.show{opacity:1}
+  #prompt .act{font-size:16px;font-weight:700}
+  #prompt .meta{font-size:12.5px;color:var(--dim);margin-top:3px}
+  #hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:#54607a;font-size:12px;letter-spacing:.03em}
+  #toast{position:absolute;bottom:150px;left:50%;transform:translateX(-50%);background:rgba(6,10,18,.9);border:1px solid var(--line);
+    border-radius:10px;padding:9px 14px;font-size:14px;font-weight:600;opacity:0;transition:.2s}
+  #toast.show{opacity:1}
+  .primary{background:linear-gradient(90deg,var(--blue),#7aa0ff);border:none;color:#061024;font-weight:800;
+    padding:13px 22px;border-radius:12px;cursor:pointer;font-size:15px;pointer-events:auto}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);padding:11px 18px;border-radius:12px;cursor:pointer;font-size:14px;pointer-events:auto}
+  .teaser{margin-top:14px;color:var(--dim);font-size:14px;line-height:1.6}
+  .teaser b{color:var(--cyan)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- in-game HUD -->
+<div id="hud">
+  <div id="who"></div>
+  <div id="chips"></div>
+  <div id="statbar"></div>
+  <div id="toast"></div>
+  <div id="prompt"><div class="act"></div><div class="meta"></div></div>
+  <div id="hint">W A S D / arrows to move &nbsp;·&nbsp; E to act at a mechanism</div>
+</div>
+
+<!-- connect + end overlays -->
+<div class="overlay" id="overlay">
+  <div class="wrap" id="ov"></div>
+</div>
+
+<script>
+/* ============ passport handshake (same as the other games) ============ */
+const APP_LABEL = { github:"GitHub", stackoverflow:"Stack Overflow", duolingo:"Duolingo",
+  chesscom:"Chess.com", lichess:"Lichess", monkeytype:"Monkeytype", youtube:"YouTube", medium:"Medium",
+  reddit:"Reddit", wikipedia:"Wikipedia", goodreads:"Goodreads", instagram:"Instagram", tiktok:"TikTok",
+  twitter:"X", facebook:"Facebook", facebookpage:"Facebook Page", linkedin:"LinkedIn", spotify:"Spotify", wca:"Cubing", strava:"Strava" };
+const APP_SKILL = { github:"programming", stackoverflow:"programming", duolingo:"language",
+  youtube:"speaking", medium:"writing", instagram:"social", tiktok:"social", twitter:"social",
+  facebook:"social", facebookpage:"social", linkedin:"social", chesscom:"strategy", lichess:"strategy" };
+const SKILL_LABEL = { programming:"Programming", language:"A Language", speaking:"Public Speaking",
+  writing:"Writing", social:"Social", strategy:"Strategy" };
+const STAT_ORDER = ["STR","DEX","CON","INT","WIS","CHA"];
+
+const FB_CONFIG = { apiKey:"AIzaSyB6j1n4ai_mnJIc7-FdIw6TivY7Utnm7sI",
+  authDomain:"virtual-me-growth-dev.firebaseapp.com", projectId:"virtual-me-growth-dev",
+  storageBucket:"virtual-me-growth-dev.firebasestorage.app", messagingSenderId:"898339489460",
+  appId:"1:898339489460:web:02df5b8bdf8a587283b9e1" };
+let FDB=null;
+try{ if(window.firebase){ firebase.initializeApp(FB_CONFIG); FDB=firebase.firestore(); } }catch(e){ console.log('fb',e); }
+let SESSION='thr-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+let PAIR_UNSUB=null;
+
+function mapPassport(p){
+  const stats={};
+  (p.stats||[]).forEach(s=>{ const k=(s.key||s.name||'').toString().toUpperCase().slice(0,3);
+    if(k) stats[k]=Math.round(s.abilityNow||0); });
+  STAT_ORDER.forEach(k=>{ if(stats[k]==null) stats[k]=50; });
+  const apps=(p.connectedApps||[]).filter(a=>APP_LABEL[a]);
+  const skills=[...new Set(apps.map(a=>APP_SKILL[a]).filter(Boolean))];
+  return { name:p.name||"Traveler", stats, apps, skills, avatar:p.avatar||null };
+}
+
+function listenForPassport(){
+  if(!FDB) return;
+  try{ if(PAIR_UNSUB) PAIR_UNSUB(); }catch(e){}
+  try{
+    PAIR_UNSUB=FDB.collection('pairingSessions').doc(SESSION).onSnapshot(snap=>{
+      if(snap && snap.exists){ const d=snap.data();
+        if(d && d.status==='connected' && d.profile){
+          try{ if(PAIR_UNSUB) PAIR_UNSUB(); }catch(e){}
+          startGame(mapPassport(d.profile));
+        }
+      }
+    }, e=>console.log('listen',e));
+  }catch(e){ console.log('listen',e); }
+}
+
+/* ============ connect screen ============ */
+const overlay=document.getElementById('overlay');
+const ov=document.getElementById('ov');
+function renderConnect(){
+  SESSION='thr-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+  overlay.style.display='flex';
+  document.getElementById('hud').style.display='none';
+  ov.innerHTML=`
+    <div class="brand">THRESHOLD &nbsp;·&nbsp; <b>reads your Virtual Me passport</b></div>
+    <h1>Step in as yourself.</h1>
+    <p class="sub">Open <b style="color:var(--cyan)">Virtual Me</b> on your phone → <b>Settings → Connect a Game</b> → scan this code. Your body, your mind, and your 3D avatar cross over — read‑only.</p>
+    <div class="card">
+      <div>
+        <div class="qrbox" id="qr"><span class="ph">generating code…</span></div>
+        <div class="qrcap">vmorigins://connect</div>
+      </div>
+      <div style="flex:1;min-width:220px">
+        <div class="status"><span class="ping"></span> Waiting for Virtual Me…</div>
+        <ul class="safe">
+          <li>Your avatar walks the room as you</li>
+          <li>Your real STR / DEX / INT open the way</li>
+          <li>Same trial for everyone — different paths</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot">Prototype · a second game, the same one-scan passport. One character, many worlds.</div>`;
+  const link="vmorigins://connect?s="+SESSION+"&g=THRESHOLD";
+  try{ const el=document.getElementById('qr');
+    if(window.QRCode){ el.innerHTML=""; new QRCode(el,{text:link,width:150,height:150,colorDark:"#050a14",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M}); }
+  }catch(e){}
+  listenForPassport();
+}
+
+/* ============ THE GAME ============ */
+let THREEJS={};
+let PROFILE=null;
+let mechanisms=[], exitGate=null, exitOpen=false, won=false, usedPath="";
+const keys={};
+const clock = (window.THREE)?new THREE.Clock():null;
+let mixer=null, walkAction=null, avatar=null, avatarReady=false;
+
+function hudEl(id){return document.getElementById(id);}
+
+function buildStatBar(stats){
+  hudEl('statbar').innerHTML=STAT_ORDER.map(k=>`<div class="sb"><div class="k">${k}</div><div class="v">${stats[k]}</div></div>`).join("");
+}
+function toast(msg,color){ const t=hudEl('toast'); t.textContent=msg; t.style.color=color||'var(--ink)'; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1900); }
+
+function placeholderAvatar(){
+  const g=new THREE.Group();
+  const blue=new THREE.MeshStandardMaterial({color:0x5B8CFF,roughness:.5,metalness:.1});
+  const dark=new THREE.MeshStandardMaterial({color:0x2a3550,roughness:.6});
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(.28,.34,.95,12),blue); torso.position.y=1.15; g.add(torso);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.26,16,16),blue); head.position.y=1.8; g.add(head);
+  const armL=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.8,8),dark); armL.position.set(-.42,1.2,0); g.add(armL);
+  const armR=armL.clone(); armR.position.x=.42; g.add(armR);
+  const legL=new THREE.Mesh(new THREE.CylinderGeometry(.12,.11,.9,8),dark); legL.position.set(-.16,.5,0); g.add(legL);
+  const legR=legL.clone(); legR.position.x=.16; g.add(legR);
+  g.traverse(o=>{o.castShadow=true;});
+  g._placeholder=true;
+  return g;
+}
+
+function normalizeAvatar(obj,targetH){
+  const box=new THREE.Box3().setFromObject(obj);
+  const size=new THREE.Vector3(); box.getSize(size);
+  const h=size.y||1; const s=targetH/h;
+  obj.scale.setScalar(s);
+  const box2=new THREE.Box3().setFromObject(obj); // recompute to sit on floor
+  obj.position.y -= box2.min.y;
+}
+
+function startGame(profile){
+  PROFILE=profile;
+  overlay.style.display='none';
+  hudEl('hud').style.display='block';
+  hudEl('who').innerHTML=`<b>${profile.name}</b> · live from Virtual Me`;
+  hudEl('chips').innerHTML=(profile.skills||[]).map(s=>`<span class="chip">${SKILL_LABEL[s]||s}</span>`).join("");
+  buildStatBar(profile.stats);
+
+  const canvas=document.getElementById('c');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true;
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x05080f);
+  scene.fog=new THREE.Fog(0x05080f,26,52);
+  const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,200);
+  THREEJS={renderer,scene,camera};
+
+  // lights
+  scene.add(new THREE.HemisphereLight(0x9fc0ff,0x0a0f18,.75));
+  const dir=new THREE.DirectionalLight(0xbcd4ff,1.1); dir.position.set(8,18,6); dir.castShadow=true;
+  dir.shadow.mapSize.set(1024,1024); dir.shadow.camera.left=-24;dir.shadow.camera.right=24;dir.shadow.camera.top=24;dir.shadow.camera.bottom=-24;
+  scene.add(dir);
+
+  // room
+  const ROOM=19;
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(ROOM*2,ROOM*2),
+    new THREE.MeshStandardMaterial({color:0x0d1626,roughness:.95}));
+  floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+  // grid glow
+  const grid=new THREE.GridHelper(ROOM*2,24,0x1c2636,0x141d2e); grid.position.y=.02; scene.add(grid);
+  // walls
+  const wallMat=new THREE.MeshStandardMaterial({color:0x0a1220,roughness:.9});
+  function wall(w,h,d,x,y,z){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat); m.position.set(x,y,z); m.receiveShadow=true; scene.add(m); }
+  wall(ROOM*2,3,.5,0,1.5,-ROOM); wall(ROOM*2,3,.5,0,1.5,ROOM);
+  wall(.5,3,ROOM*2,-ROOM,1.5,0); wall(.5,3,ROOM*2,ROOM,1.5,0);
+
+  // avatar (placeholder first, swap to GLB if it loads)
+  avatar=placeholderAvatar(); scene.add(avatar);
+  avatar.position.set(0,0,14);
+  avatarReady=true;
+  loadRealAvatar(profile.avatar, scene);
+
+  // mechanisms — each opens the exit; your real self decides which you can use
+  mechanisms=[];
+  addMechanism(scene,{ pos:[-10,-4], color:0xff6b6b, stat:"STR", threshold:55,
+    act:"Heave the blast slab aside", verb:"strength" });
+  addMechanism(scene,{ pos:[10,-4], color:0xffb84d, stat:"DEX", threshold:55,
+    act:"Vault the broken catwalk", verb:"agility" });
+  addMechanism(scene,{ pos:[0,-11], color:0x5B8CFF, stat:"INT", threshold:60, skill:"programming",
+    act:"Override the core console", verb:"intellect" });
+  addMechanism(scene,{ pos:[13,10], color:0x8b98b0, stat:null, threshold:0,
+    act:"Hand-crank the service hatch (slow but sure)", verb:"patience" });
+
+  // exit gate
+  const gate=new THREE.Mesh(new THREE.BoxGeometry(4,3.4,.5),
+    new THREE.MeshStandardMaterial({color:0xff6b6b,emissive:0x330000,emissiveIntensity:1,transparent:true,opacity:.9}));
+  gate.position.set(0,1.7,-ROOM+.4); scene.add(gate); exitGate=gate; exitOpen=false;
+
+  // input
+  addEventListener('keydown',e=>{ keys[e.key.toLowerCase()]=true; if(e.key.toLowerCase()==='e') tryInteract(); });
+  addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+  addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); });
+
+  won=false; usedPath=""; clock.start();
+  loop();
+}
+
+function loadRealAvatar(av, scene){
+  if(!av || !(av.walking||av.rigged||av.idle) || !window.THREE || !THREE.GLTFLoader) return;
+  const url=av.walking||av.rigged||av.idle;
+  try{
+    const loader=new THREE.GLTFLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(url, (gltf)=>{
+      const model=gltf.scene;
+      model.traverse(o=>{ if(o.isMesh){ o.castShadow=true; } });
+      normalizeAvatar(model,1.85);
+      // swap position from placeholder
+      model.position.x=avatar.position.x; model.position.z=avatar.position.z;
+      model.rotation.y=avatar.rotation.y;
+      scene.remove(avatar); avatar=model; avatar._placeholder=false;
+      if(gltf.animations && gltf.animations.length){
+        mixer=new THREE.AnimationMixer(model);
+        walkAction=mixer.clipAction(gltf.animations[0]); walkAction.play(); walkAction.paused=true;
+      }
+      toast("Avatar linked ✓","var(--green)");
+    }, undefined, (err)=>{ console.log('avatar load failed (CORS?)',err); toast("Using stand-in avatar (3D file blocked)","var(--amber)"); });
+  }catch(e){ console.log('loader err',e); }
+}
+
+function addMechanism(scene,cfg){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({color:cfg.color,emissive:cfg.color,emissiveIntensity:.15,roughness:.5});
+  const post=new THREE.Mesh(new THREE.BoxGeometry(1.4,2.2,1.4),mat); post.position.y=1.1; post.castShadow=true; g.add(post);
+  const orb=new THREE.Mesh(new THREE.SphereGeometry(.4,16,16),new THREE.MeshStandardMaterial({color:cfg.color,emissive:cfg.color,emissiveIntensity:.6}));
+  orb.position.y=2.5; g.add(orb);
+  g.position.set(cfg.pos[0],0,cfg.pos[1]);
+  scene.add(g);
+  mechanisms.push({ cfg, group:g, orb, done:false, pos:new THREE.Vector3(cfg.pos[0],0,cfg.pos[1]) });
+}
+
+function canUse(m){
+  const c=m.cfg;
+  if(c.stat===null) return {ok:true, why:"anyone can — it just takes a while"};
+  const val=PROFILE.stats[c.stat]||0;
+  if(val>=c.threshold) return {ok:true, why:`${c.stat} ${val} ≥ ${c.threshold}`};
+  if(c.skill && (PROFILE.skills||[]).includes(c.skill)) return {ok:true, why:`proven ${SKILL_LABEL[c.skill]||c.skill}`};
+  return {ok:false, why:`needs ${c.stat} ${c.threshold} · you have ${val}${c.skill?` (or proven ${SKILL_LABEL[c.skill]})`:""}`};
+}
+
+let nearMech=null;
+function updatePrompt(){
+  const p=hudEl('prompt');
+  let near=null,best=6;
+  for(const m of mechanisms){ if(m.done) continue; const d=avatar.position.distanceTo(m.pos); if(d<best){best=d;near=m;} }
+  nearMech=near;
+  if(!near){ p.classList.remove('show'); return; }
+  const u=canUse(near);
+  p.querySelector('.act').innerHTML=`[E] ${near.cfg.act}`;
+  p.querySelector('.act').style.color=u.ok?'var(--green)':'var(--red)';
+  p.querySelector('.meta').textContent=(u.ok?'✓ ':'✗ ')+u.why;
+  p.classList.add('show');
+}
+
+function tryInteract(){
+  if(!nearMech||nearMech.done||won) return;
+  const u=canUse(nearMech);
+  if(!u.ok){ toast("Not "+nearMech.cfg.verb+" enough for that one.","var(--red)"); return; }
+  nearMech.done=true;
+  nearMech.orb.material.color.set(0x39d98a); nearMech.orb.material.emissive.set(0x39d98a);
+  usedPath=nearMech.cfg.stat||"grit";
+  toast("Mechanism engaged — the threshold opens.","var(--green)");
+  openExit();
+}
+
+function openExit(){
+  if(exitOpen) return; exitOpen=true;
+  exitGate.material.color.set(0x39d98a); exitGate.material.emissive.set(0x093a24);
+}
+
+function win(){
+  if(won) return; won=true;
+  overlay.style.display='flex';
+  const how = usedPath==="grit" ? "you cranked your way through by sheer patience"
+    : `your ${usedPath} opened a way most people can't take`;
+  ov.innerHTML=`
+    <div class="brand">THRESHOLD &nbsp;·&nbsp; <b>cleared</b></div>
+    <h1>You crossed as only you could.</h1>
+    <p class="sub">${PROFILE.name}, ${how}. Same room, same locks — but your real strengths chose the route.</p>
+    <div class="teaser">
+      <b>This is a different game than the last one.</b> It read the same passport — your stats, your proven skills, and your 3D avatar — with no setup, no new character. <br><br>
+      <b style="color:var(--cyan)">One character. Many worlds.</b> Play anywhere as yourself.
+    </div>
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="primary" onclick="location.reload()">↺ Run it again</button>
+      <button class="ghost" onclick="backToConnect()">Connect a different passport</button>
+    </div>`;
+}
+function backToConnect(){ won=true; renderConnect(); }
+
+function loop(){
+  if(won && overlay.style.display==='flex'){ /* paused on win screen */ }
+  requestAnimationFrame(loop);
+  const {renderer,scene,camera}=THREEJS; if(!renderer) return;
+  const dt=Math.min(clock.getDelta(),.05);
+
+  // movement
+  let mx=0,mz=0;
+  if(keys['w']||keys['arrowup']) mz-=1;
+  if(keys['s']||keys['arrowdown']) mz+=1;
+  if(keys['a']||keys['arrowleft']) mx-=1;
+  if(keys['d']||keys['arrowright']) mx+=1;
+  const moving=(mx||mz)&&!won;
+  if(moving){
+    const len=Math.hypot(mx,mz); mx/=len; mz/=len;
+    const spd=6.2;
+    avatar.position.x=Math.max(-18,Math.min(18,avatar.position.x+mx*spd*dt));
+    avatar.position.z=Math.max(-17.5,Math.min(18,avatar.position.z+mz*spd*dt));
+    avatar.rotation.y=Math.atan2(mx,mz);
+    if(walkAction) walkAction.paused=false;
+    if(avatar._placeholder){ avatar.position.y=Math.abs(Math.sin(clock.elapsedTime*10))*0.06; }
+  } else {
+    if(walkAction) walkAction.paused=true;
+    if(avatar._placeholder) avatar.position.y=0;
+  }
+  if(mixer) mixer.update(dt);
+
+  // camera follows behind avatar
+  const camTarget=new THREE.Vector3(avatar.position.x,1.4,avatar.position.z);
+  const desired=new THREE.Vector3(avatar.position.x,7.5,avatar.position.z+11);
+  camera.position.lerp(desired,1-Math.pow(0.001,dt));
+  camera.lookAt(camTarget);
+
+  // spin orbs
+  for(const m of mechanisms){ m.orb.rotation.y+=dt*1.5; m.orb.position.y=2.5+Math.sin(clock.elapsedTime*2+m.pos.x)*0.08; }
+  if(exitGate){ exitGate.material.opacity=exitOpen?(0.55+Math.sin(clock.elapsedTime*3)*0.15):0.9; }
+
+  // check exit
+  if(exitOpen && !won){
+    const d=Math.hypot(avatar.position.x-exitGate.position.x, avatar.position.z-exitGate.position.z);
+    if(d<2.4) win();
+  }
+
+  if(!won) updatePrompt();
+  renderer.render(scene,camera);
+}
+
+renderConnect();
+</script>
+</body>
+</html>

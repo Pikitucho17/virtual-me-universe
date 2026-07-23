@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASCENT — your Virtual Me, embodied</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<style>
+  :root{--bg:#03060b;--panel:#0a0f18;--line:#1c2636;--ink:#e8eefc;--dim:#8b98b0;--blue:#5B8CFF;--cyan:#00E5FF;--violet:#8B5CF6;--gold:#FFD27A}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;overflow:hidden}
+  #c{position:fixed;inset:0;display:block}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;
+    background:radial-gradient(1000px 700px at 60% -10%,#0b1830 0%,transparent 60%),var(--bg)}
+  .wrap{max-width:760px;padding:26px 22px;width:100%}
+  .brand{letter-spacing:.32em;font-size:12px;color:var(--dim);text-transform:uppercase}
+  .brand b{color:var(--gold)}
+  h1{font-size:32px;margin:12px 0 6px;font-weight:800;
+    background:linear-gradient(90deg,#fff,#ffe2ae 60%,var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);font-size:15px;line-height:1.55;max-width:560px}
+  .card{background:linear-gradient(180deg,var(--panel),#0d1420);border:1px solid var(--line);
+    border-radius:16px;padding:22px;margin-top:18px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+  .qrbox{width:174px;height:174px;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;padding:12px}
+  .qrbox img,.qrbox canvas{width:150px;height:150px;display:block}
+  .qrbox .ph{color:#0a0f18;font-family:ui-monospace,monospace;font-size:12px;text-align:center}
+  .status{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600}
+  .ping{width:11px;height:11px;border-radius:50%;background:var(--gold);animation:ping 1.4s infinite}
+  @keyframes ping{0%{box-shadow:0 0 0 0 rgba(255,210,122,.55)}70%{box-shadow:0 0 0 13px rgba(255,210,122,0)}100%{box-shadow:0 0 0 0 rgba(255,210,122,0)}}
+  .safe{margin:14px 0 0;padding-left:18px;color:var(--dim);font-size:13px;line-height:1.75}
+  .qrcap{font-family:ui-monospace,monospace;color:var(--dim);font-size:12px;text-align:center;margin-top:8px}
+  .foot{margin-top:22px;color:#54607a;font-size:12px}
+  .primary{background:linear-gradient(90deg,var(--gold),#ffe2ae);border:none;color:#241a05;font-weight:800;
+    padding:13px 22px;border-radius:12px;cursor:pointer;font-size:15px;pointer-events:auto}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);padding:11px 18px;border-radius:12px;cursor:pointer;font-size:14px;pointer-events:auto}
+  /* HUD */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;display:none}
+  #statbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;
+    background:rgba(6,10,18,.72);border:1px solid var(--line);border-radius:12px;padding:8px 10px;backdrop-filter:blur(6px)}
+  .sb{min-width:50px;text-align:center}
+  .sb .k{font-size:10px;color:var(--dim);letter-spacing:.12em}
+  .sb .v{font-size:17px;font-weight:800}
+  #who{position:absolute;top:16px;left:16px;font-size:13px;color:var(--dim)}
+  #who b{color:var(--gold)}
+  #hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:#54607a;font-size:12px;letter-spacing:.03em;text-align:center;width:92%}
+  #prompt{position:absolute;bottom:74px;left:50%;transform:translateX(-50%);text-align:center;min-width:260px;max-width:560px;
+    background:rgba(6,10,18,.85);border:1px solid var(--line);border-radius:14px;padding:12px 18px;backdrop-filter:blur(6px);opacity:0;transition:.15s}
+  #prompt.show{opacity:1}
+  #prompt .act{font-size:16px;font-weight:700;color:var(--gold)}
+  #prompt .meta{font-size:12.5px;color:var(--dim);margin-top:3px}
+  #touchui{display:none}
+  #joy{position:fixed;left:26px;bottom:30px;width:124px;height:124px;border-radius:50%;
+    background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.22);pointer-events:auto;touch-action:none}
+  #knob{position:absolute;left:50%;top:50%;width:54px;height:54px;border-radius:50%;
+    background:rgba(255,210,122,.3);border:1.5px solid rgba(255,210,122,.7);transform:translate(-50%,-50%)}
+  #actbtn{position:fixed;right:28px;bottom:44px;width:86px;height:86px;border-radius:50%;pointer-events:auto;
+    background:rgba(255,210,122,.14);border:2px solid rgba(255,210,122,.6);color:var(--gold);font-weight:900;font-size:15px;
+    display:flex;align-items:center;justify-content:center;letter-spacing:.08em;touch-action:none;user-select:none}
+  /* skill tree overlay */
+  #tree{position:fixed;inset:0;z-index:8;display:none;background:rgba(3,6,11,.96)}
+  #treeCanvas{position:absolute;inset:0;width:100%;height:100%}
+  #treeClose{position:absolute;top:20px;right:22px;z-index:9;background:rgba(255,255,255,.1);border:1px solid var(--line);
+    color:#fff;border-radius:16px;padding:8px 18px;font-size:14px;font-weight:700;cursor:pointer;pointer-events:auto}
+  #treeTitle{position:absolute;top:22px;left:26px;z-index:9}
+  #treeTitle .k{letter-spacing:.3em;font-size:11px;color:var(--gold);text-transform:uppercase}
+  #treeTitle .t{font-size:22px;font-weight:800;margin-top:3px}
+  #treeFoot{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:var(--dim);font-size:13px;z-index:9}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="who"></div>
+  <div id="statbar"></div>
+  <div id="prompt"><div class="act"></div><div class="meta"></div></div>
+  <div id="hint">W A S D to walk · E to act · visit the six monoliths · the crystal holds your skill tree</div>
+  <div id="touchui"><div id="joy"><div id="knob"></div></div><div id="actbtn">ACT</div></div>
+</div>
+<div id="tree">
+  <canvas id="treeCanvas"></canvas>
+  <div id="treeTitle"><div class="k">The Constellation of</div><div class="t" id="treeName">You</div></div>
+  <button id="treeClose">✕ Close</button>
+  <div id="treeFoot" ></div>
+</div>
+<div class="overlay" id="overlay"><div class="wrap" id="ov"></div></div>
+
+<script>
+/* ============ passport handshake (the ritual — same as every game) ============ */
+const STAT_ORDER=["STR","DEX","CON","INT","WIS","CHA"];
+const STAT_COLOR={STR:0xff6b6b,DEX:0x39d98a,CON:0xffb84d,INT:0x5B8CFF,WIS:0x8B5CF6,CHA:0x00E5FF};
+const SAMPLE={name:"The Sample Self",stats:{STR:72,DEX:58,CON:64,INT:61,WIS:57,CHA:55},avatar:null,sample:true,
+  planets:[{id:"programming",name:"Programming",xp:120},{id:"language-spanish",name:"Spanish",xp:80},
+  {id:"prayer",name:"Prayer",xp:60},{id:"chess-tactics",name:"Chess Tactics",xp:90},{id:"first-aid",name:"First Aid",xp:40},
+  {id:"public-speaking",name:"Public Speaking",xp:70},{id:"literature",name:"Literature",xp:55}]};
+
+const FB_CONFIG={apiKey:"AIzaSyB6j1n4ai_mnJIc7-FdIw6TivY7Utnm7sI",authDomain:"virtual-me-growth-dev.firebaseapp.com",
+  projectId:"virtual-me-growth-dev",storageBucket:"virtual-me-growth-dev.firebasestorage.app",
+  messagingSenderId:"898339489460",appId:"1:898339489460:web:02df5b8bdf8a587283b9e1"};
+let FDB=null;
+try{ if(window.firebase){ firebase.initializeApp(FB_CONFIG); FDB=firebase.firestore(); } }catch(e){}
+let SESSION='asc-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+let PAIR_UNSUB=null;
+
+function mapPassport(p){
+  const stats={};
+  (p.stats||[]).forEach(s=>{const k=(s.key||s.name||'').toString().toUpperCase().slice(0,3); if(k) stats[k]=Math.round(s.abilityNow||0);});
+  STAT_ORDER.forEach(k=>{ if(stats[k]==null) stats[k]=50; });
+  const planets=Array.isArray(p.planets)?p.planets.filter(x=>x&&x.id).map(x=>({id:x.id,name:x.name||x.id,xp:Number(x.xp)||0})):[];
+  return { name:p.name||"Traveler", stats, planets, avatar:p.avatar||null };
+}
+function listenForPassport(){
+  if(!FDB) return;
+  try{ if(PAIR_UNSUB) PAIR_UNSUB(); }catch(e){}
+  try{
+    PAIR_UNSUB=FDB.collection('pairingSessions').doc(SESSION).onSnapshot(snap=>{
+      if(snap&&snap.exists){const d=snap.data();
+        if(d&&d.status==='connected'&&d.profile){ try{ if(PAIR_UNSUB) PAIR_UNSUB(); }catch(e){}
+          startGame(mapPassport(d.profile)); } }
+    },e=>console.log('listen',e));
+  }catch(e){}
+}
+const overlay=document.getElementById('overlay'), ov=document.getElementById('ov');
+function renderConnect(){
+  SESSION='asc-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+  overlay.style.display='flex';
+  document.getElementById('hud').style.display='none';
+  ov.innerHTML=`
+    <div class="brand">ASCENT &nbsp;·&nbsp; <b>your Virtual Me, embodied</b></div>
+    <h1>Stand inside your own progress.</h1>
+    <p class="sub">Your avatar, your six stats, and every skill you've proven in real life — rendered as a place you can walk.
+    Open <b style="color:var(--gold)">Virtual Me</b> → <b>Settings → Connect a Game</b> → scan the code. The scan is the key.</p>
+    <div class="card">
+      <div><div class="qrbox" id="qr"><span class="ph">generating code…</span></div><div class="qrcap">vmorigins://connect</div></div>
+      <div style="flex:1;min-width:220px">
+        <div class="status"><span class="ping"></span> Waiting for Virtual Me…</div>
+        <ul class="safe">
+          <li>Six monoliths — one per stat, glowing with YOUR numbers</li>
+          <li>The crystal shows your real proven-skill constellation</li>
+          <li>Read-only · every session reads your CURRENT level</li>
+        </ul>
+      </div>
+    </div>
+    <div style="margin-top:14px"><button class="ghost" onclick="startGame(SAMPLE)">Try a sample self instead →</button></div>
+    <div class="foot">Prototype · the beginning of the universe of games. One passport, any world.</div>`;
+  const link="vmorigins://connect?s="+SESSION+"&g=ASCENT";
+  try{const el=document.getElementById('qr');
+    if(window.QRCode){el.innerHTML=""; new QRCode(el,{text:link,width:150,height:150,colorDark:"#050a14",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}
+  }catch(e){}
+  listenForPassport();
+}
+
+/* ============ canvas texture + sprite helpers ============ */
+function glowTexture(hex,inner){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const x=c.getContext('2d'); const g=x.createRadialGradient(64,64,0,64,64,64);
+  const col='#'+hex.toString(16).padStart(6,'0');
+  g.addColorStop(0, inner||'#ffffff'); g.addColorStop(0.25,col); g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g; x.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+function labelSprite(text,sub,colorHex){
+  const c=document.createElement('canvas'); c.width=512; c.height=192;
+  const x=c.getContext('2d');
+  x.textAlign='center';
+  x.font='900 64px Segoe UI, sans-serif';
+  x.fillStyle='#'+(colorHex||0xffffff).toString(16).padStart(6,'0');
+  x.shadowColor='rgba(0,0,0,0.9)'; x.shadowBlur=18;
+  x.fillText(text,256,84);
+  if(sub){ x.font='700 40px Segoe UI, sans-serif'; x.fillStyle='rgba(232,238,252,0.92)'; x.fillText(sub,256,150); }
+  const t=new THREE.CanvasTexture(c);
+  const m=new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false});
+  const sp=new THREE.Sprite(m); sp.scale.set(6,2.25,1);
+  return sp;
+}
+
+/* ============ THE SANCTUM ============ */
+let THREEJS={}, PROFILE=null, avatar=null, mixer=null, walkAction=null;
+const keys={}; let TOUCH={active:false,x:0,z:0};
+const clock=(window.THREE)?new THREE.Clock():null;
+let monoliths=[], shrine=null, fire=null, embers=null, nearThing=null, treeOpen=false;
+
+function hudEl(id){return document.getElementById(id);}
+function placeholderAvatar(){
+  const g=new THREE.Group();
+  const gold=new THREE.MeshStandardMaterial({color:0xFFD27A,roughness:.5,metalness:.2});
+  const dark=new THREE.MeshStandardMaterial({color:0x2a3550,roughness:.6});
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(.28,.34,.95,12),gold); torso.position.y=1.15; g.add(torso);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.26,16,16),gold); head.position.y=1.8; g.add(head);
+  const armL=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.8,8),dark); armL.position.set(-.42,1.2,0); g.add(armL);
+  const armR=armL.clone(); armR.position.x=.42; g.add(armR);
+  const legL=new THREE.Mesh(new THREE.CylinderGeometry(.12,.11,.9,8),dark); legL.position.set(-.16,.5,0); g.add(legL);
+  const legR=legL.clone(); legR.position.x=.16; g.add(legR);
+  g.traverse(o=>{o.castShadow=true;}); g._placeholder=true; return g;
+}
+function normalizeAvatar(obj,targetH){
+  const box=new THREE.Box3().setFromObject(obj); const size=new THREE.Vector3(); box.getSize(size);
+  const h=size.y||1; obj.scale.setScalar(targetH/h);
+  const box2=new THREE.Box3().setFromObject(obj); obj.position.y-=box2.min.y;
+}
+function loadRealAvatar(av,scene){
+  if(!av||!(av.walking||av.rigged||av.idle)||!THREE.GLTFLoader) return;
+  const url=av.walking||av.rigged||av.idle;
+  try{
+    const loader=new THREE.GLTFLoader(); loader.setCrossOrigin('anonymous');
+    loader.load(url,(gltf)=>{
+      const model=gltf.scene; model.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+      normalizeAvatar(model,1.85);
+      model.position.x=avatar.position.x; model.position.z=avatar.position.z; model.rotation.y=avatar.rotation.y;
+      THREEJS.scene.remove(avatar); avatar=model; avatar._placeholder=false;
+      if(gltf.animations&&gltf.animations.length){ mixer=new THREE.AnimationMixer(model);
+        walkAction=mixer.clipAction(gltf.animations[0]); walkAction.play(); walkAction.paused=true; }
+    },undefined,(e)=>console.log('avatar load failed',e));
+  }catch(e){}
+}
+
+function startGame(profile){
+  PROFILE=profile;
+  overlay.style.display='none';
+  hudEl('hud').style.display='block';
+  hudEl('who').innerHTML=`<b>${profile.name}</b> · live from Virtual Me${profile.sample?' (sample)':''}`;
+  hudEl('statbar').innerHTML=STAT_ORDER.map(k=>`<div class="sb"><div class="k">${k}</div><div class="v" style="color:#${STAT_COLOR[k].toString(16).padStart(6,'0')}">${profile.stats[k]}</div></div>`).join("");
+  document.getElementById('treeName').textContent=profile.name;
+
+  const canvas=document.getElementById('c');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true;
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x04060f);
+  scene.fog=new THREE.Fog(0x04060f,30,70);
+  const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,300);
+  THREEJS={renderer,scene,camera};
+
+  // ── sky: stars + four galaxy nebulas ──
+  {
+    const starGeo=new THREE.BufferGeometry(); const N=1200; const pos=new Float32Array(N*3);
+    for(let i=0;i<N;i++){ const r=120+Math.random()*80, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+      pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=Math.abs(r*Math.cos(ph))*0.7+5; pos[i*3+2]=r*Math.sin(ph)*Math.sin(th); }
+    starGeo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    scene.add(new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xbcd4ff,size:.7,sizeAttenuation:true,transparent:true,opacity:.9})));
+    [[0x22336f,-90,40,-120],[0x6f2222,100,55,-100],[0x1e5c3a,110,45,110],[0x4b2a6f,-100,50,100]].forEach(([c,x,y,z])=>{
+      const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(c),transparent:true,opacity:.5,depthWrite:false}));
+      sp.position.set(x,y,z); sp.scale.set(140,90,1); scene.add(sp);
+    });
+  }
+
+  // ── light ──
+  scene.add(new THREE.HemisphereLight(0x8fa8e0,0x0a0f18,.55));
+  const moon=new THREE.DirectionalLight(0x9fb8ff,.7); moon.position.set(-14,24,10); moon.castShadow=true;
+  moon.shadow.mapSize.set(1024,1024); moon.shadow.camera.left=-30; moon.shadow.camera.right=30; moon.shadow.camera.top=30; moon.shadow.camera.bottom=-30;
+  scene.add(moon);
+
+  // ── the floating island platform ──
+  const R=17;
+  const platTop=new THREE.Mesh(new THREE.CylinderGeometry(R,R*0.96,1.6,48),
+    new THREE.MeshStandardMaterial({color:0x151d30,roughness:.95})); platTop.position.y=-0.8; platTop.receiveShadow=true; scene.add(platTop);
+  const platRock=new THREE.Mesh(new THREE.CylinderGeometry(R*0.96,2.5,10,24),
+    new THREE.MeshStandardMaterial({color:0x0c1220,roughness:1})); platRock.position.y=-6.6; scene.add(platRock);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(R-0.3,0.14,10,64),
+    new THREE.MeshStandardMaterial({color:0xFFD27A,emissive:0x8a6a1e,emissiveIntensity:.7}));
+  rim.rotation.x=Math.PI/2; rim.position.y=0.03; scene.add(rim);
+  const grid=new THREE.GridHelper(R*2,26,0x1c2636,0x121a2c); grid.position.y=0.02; scene.add(grid);
+  // scattered rocks + crystal shards for life
+  for(let i=0;i<14;i++){
+    const a=Math.random()*Math.PI*2, rr=6+Math.random()*(R-8);
+    const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(.25+Math.random()*.5),
+      new THREE.MeshStandardMaterial({color:0x24304a,roughness:.9}));
+    rock.position.set(Math.cos(a)*rr,0.2,Math.sin(a)*rr); rock.rotation.set(Math.random(),Math.random(),Math.random());
+    rock.castShadow=true; scene.add(rock);
+  }
+
+  // ── DECOR: free Kenney models (MIT/CC0, see assets/LICENSE.txt). Additive
+  //    dressing only — if any file fails to load, the sanctum still stands. ──
+  loadDecor(scene);
+
+  // ── campfire (center-south): logs, flame glow, light ──
+  {
+    const g=new THREE.Group();
+    const logMat=new THREE.MeshStandardMaterial({color:0x4a3421,roughness:.95});
+    for(let i=0;i<4;i++){ const log=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,1.3,8),logMat);
+      log.rotation.z=Math.PI/2; log.rotation.y=i*Math.PI/4; log.position.y=.12; g.add(log); }
+    const flame=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(0xff8c33,'#fff2c0'),transparent:true,depthWrite:false}));
+    flame.position.y=.75; flame.scale.set(2.4,3.2,1); g.add(flame); g._flame=flame;
+    const fl=new THREE.PointLight(0xff9c4a,1.6,16); fl.position.y=1.1; g.add(fl); g._light=fl;
+    g.position.set(0,0,6); scene.add(g); fire=g;
+    // embers
+    const eg=new THREE.BufferGeometry(); const EN=40; const ep=new Float32Array(EN*3);
+    for(let i=0;i<EN;i++){ ep[i*3]=(Math.random()-.5)*1.4; ep[i*3+1]=Math.random()*3; ep[i*3+2]=(Math.random()-.5)*1.4; }
+    eg.setAttribute('position',new THREE.BufferAttribute(ep,3));
+    embers=new THREE.Points(eg,new THREE.PointsMaterial({color:0xffb060,size:.09,transparent:true,opacity:.9}));
+    embers.position.copy(fire.position); scene.add(embers);
+  }
+
+  // ── SIX STAT MONOLITHS in a ring ──
+  monoliths=[];
+  STAT_ORDER.forEach((k,i)=>{
+    const a=(i/6)*Math.PI*2-Math.PI/2;
+    const x=Math.cos(a)*11.5, z=Math.sin(a)*11.5;
+    const v=PROFILE.stats[k], c=STAT_COLOR[k];
+    const g=new THREE.Group();
+    const h=2.2+ (v/100)*2.4;                       // your number IS the height
+    const pillar=new THREE.Mesh(new THREE.BoxGeometry(1.1,h,0.7),
+      new THREE.MeshStandardMaterial({color:0x1a2438,roughness:.7,emissive:c,emissiveIntensity:.06}));
+    pillar.position.y=h/2; pillar.castShadow=true; g.add(pillar);
+    const orb=new THREE.Mesh(new THREE.SphereGeometry(.32,18,18),
+      new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.4+ (v/100)*.6}));
+    orb.position.y=h+0.55; g.add(orb); g._orb=orb;
+    const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(c),transparent:true,opacity:.55,depthWrite:false}));
+    halo.position.y=h+0.55; halo.scale.set(2.6,2.6,1); g.add(halo);
+    const lbl=labelSprite(String(v),k,c); lbl.position.y=h+2.1; g.add(lbl);
+    const pl=new THREE.PointLight(c,.5+ (v/100)*.9,9); pl.position.y=h+0.6; g.add(pl);
+    g.position.set(x,0,z); scene.add(g);
+    monoliths.push({group:g,stat:k,value:v,pos:new THREE.Vector3(x,0,z)});
+  });
+
+  // ── the SKILL CRYSTAL (north): your constellation lives inside ──
+  {
+    const g=new THREE.Group();
+    const crys=new THREE.Mesh(new THREE.OctahedronGeometry(1.5,0),
+      new THREE.MeshStandardMaterial({color:0xFFD27A,emissive:0xFFD27A,emissiveIntensity:.35,roughness:.2,metalness:.4,transparent:true,opacity:.94}));
+    crys.position.y=3.1; g.add(crys); g._crys=crys;
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.9,1,8),
+      new THREE.MeshStandardMaterial({color:0x1a2438,roughness:.8}));
+    base.position.y=.5; base.castShadow=true; g.add(base);
+    const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(0xFFD27A),transparent:true,opacity:.6,depthWrite:false}));
+    halo.position.y=3.1; halo.scale.set(6.5,6.5,1); g.add(halo);
+    const n=(PROFILE.planets||[]).length;
+    const lbl=labelSprite(String(n),'skills proven',0xFFD27A); lbl.position.y=5.6; g.add(lbl);
+    const pl=new THREE.PointLight(0xFFD27A,1.2,15); pl.position.y=3.2; g.add(pl);
+    g.position.set(0,0,-11.5); scene.add(g);
+    shrine={group:g,pos:new THREE.Vector3(0,0,-11.5)};
+  }
+
+  // ── avatar ──
+  avatar=placeholderAvatar(); scene.add(avatar);
+  avatar.position.set(0,0,1.5); avatar.rotation.y=Math.PI;
+  loadRealAvatar(profile.avatar,scene);
+
+  // ── input ──
+  addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true; if(e.key.toLowerCase()==='e') tryAct(); if(e.key==='Escape') closeTree();});
+  addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+  addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();});
+  if('ontouchstart' in window){ hudEl('touchui').style.display='block'; setupTouch(); }
+  document.getElementById('treeClose').addEventListener('click',closeTree);
+
+  clock.start();
+  loop();
+}
+
+function setupTouch(){
+  const joy=hudEl('joy'),knob=hudEl('knob'),act=hudEl('actbtn'); const RJ=45;
+  function setKnob(dx,dz){knob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dz}px))`;}
+  function handle(e){const t=e.touches[0]; if(!t)return; const r=joy.getBoundingClientRect();
+    let dx=t.clientX-(r.left+r.width/2),dz=t.clientY-(r.top+r.height/2);
+    const len=Math.hypot(dx,dz)||1; const cl=Math.min(len,RJ); dx=dx/len*cl; dz=dz/len*cl;
+    TOUCH={active:true,x:dx/RJ,z:dz/RJ}; setKnob(dx,dz); e.preventDefault();}
+  joy.addEventListener('touchstart',handle,{passive:false});
+  joy.addEventListener('touchmove',handle,{passive:false});
+  joy.addEventListener('touchend',()=>{TOUCH={active:false,x:0,z:0}; setKnob(0,0);});
+  act.addEventListener('touchstart',(e)=>{tryAct(); e.preventDefault();},{passive:false});
+}
+
+/* ============ decor (Kenney free assets, additive) ============ */
+let clouds=[];
+function loadDecor(scene){
+  if(!THREE.GLTFLoader) return;
+  const loader=new THREE.GLTFLoader();
+  function place(url,spots,scale,yOff){
+    loader.load(url,(g)=>{
+      const src=g.scene;
+      src.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+      spots.forEach(([x,z,rot])=>{
+        const m=src.clone(true);
+        m.scale.setScalar(scale);
+        m.position.set(x,(yOff||0),z);
+        m.rotation.y=rot||0;
+        scene.add(m);
+        if(url.indexOf('cloud')>=0){ m.userData._cloud=true; m.userData._r=Math.hypot(x,z); m.userData._a=Math.atan2(z,x); m.userData._y=m.position.y; clouds.push(m); }
+      });
+    },undefined,()=>{});
+  }
+  // tree clusters near the rim (between monoliths)
+  place('assets/grass-trees-tall.glb',[[7.6,7.6,0.6],[-8.2,6.8,2.2],[-7.4,-8.0,4.0]],2.6,0);
+  place('assets/grass-trees.glb',[[8.6,-6.6,1.2],[-4.5,9.9,5.1]],2.6,0);
+  // grass tufts scattered on the platform
+  const tufts=[]; for(let i=0;i<16;i++){ const a=Math.random()*Math.PI*2, r=3.5+Math.random()*11;
+    tufts.push([Math.cos(a)*r,Math.sin(a)*r,Math.random()*6]); }
+  place('assets/grass.glb',tufts.slice(0,8),1.6,0);
+  place('assets/grass-small.glb',tufts.slice(8),1.6,0);
+  // a banner beside the crystal
+  place('assets/flag.glb',[[2.2,-10.6,3.6]],2.4,0);
+  // clouds drifting around and below the island
+  place('assets/cloud.glb',[[24,4,0],[-22,10,2],[16,-20,4],[-14,-18,1]],3.2,-2.5);
+}
+
+/* ============ interaction ============ */
+const STAT_WORDS={STR:"Strength — what your body can move.",DEX:"Dexterity — what your hands can craft.",
+  CON:"Constitution — what you can endure.",INT:"Intelligence — what your mind can solve.",
+  WIS:"Wisdom — how well you choose.",CHA:"Charisma — how you move people."};
+function updatePrompt(){
+  const p=hudEl('prompt'); let best=4.2, near=null;
+  for(const m of monoliths){ const d=avatar.position.distanceTo(m.pos); if(d<best){best=d; near={type:'stat',m};} }
+  const ds=avatar.position.distanceTo(shrine.pos); if(ds<5){ if(!near||ds<best) near={type:'shrine'}; }
+  nearThing=near;
+  if(!near){p.classList.remove('show'); return;}
+  if(near.type==='stat'){
+    p.querySelector('.act').textContent=`${near.m.stat} ${near.m.value}`;
+    p.querySelector('.act').style.color='#'+STAT_COLOR[near.m.stat].toString(16).padStart(6,'0');
+    p.querySelector('.meta').textContent=STAT_WORDS[near.m.stat]+" Proven in real life — read-only here.";
+  } else {
+    p.querySelector('.act').textContent='[E] Open your constellation';
+    p.querySelector('.act').style.color='var(--gold)';
+    p.querySelector('.meta').textContent=`${(PROFILE.planets||[]).length} skills you have PROVEN orbit inside this crystal.`;
+  }
+  p.classList.add('show');
+}
+function tryAct(){ if(treeOpen){closeTree(); return;} if(nearThing&&nearThing.type==='shrine') openTree(); }
+
+/* ============ THE CONSTELLATION (2D canvas overlay) ============ */
+function openTree(){
+  treeOpen=true;
+  const el=document.getElementById('tree'); el.style.display='block';
+  const planets=(PROFILE.planets||[]).slice(0,120);
+  document.getElementById('treeFoot').textContent=
+    planets.length
+      ? `${planets.length} skills proven in real life · brighter = more proof · 3,000+ more wait in the Universe`
+      : `No skills proven yet — connect apps and prove actions in Virtual Me, then come back. 3,000+ planets wait.`;
+  const c=document.getElementById('treeCanvas');
+  const dpr=Math.min(devicePixelRatio,2);
+  c.width=innerWidth*dpr; c.height=innerHeight*dpr;
+  const x=c.getContext('2d'); x.scale(dpr,dpr);
+  const W=innerWidth,H=innerHeight,cx=W/2,cy=H/2;
+  let t0=null;
+  function draw(ts){
+    if(!treeOpen) return;
+    if(!t0) t0=ts; const t=(ts-t0)/1000;
+    x.clearRect(0,0,W,H);
+    // faint dust ring (the locked universe)
+    x.save();
+    for(let i=0;i<70;i++){ const a=i*2.399+0.4, r=Math.min(W,H)*0.44+((i*37)%40);
+      x.globalAlpha=0.05+0.03*Math.sin(t+i); x.fillStyle='#8b98b0';
+      x.beginPath(); x.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,1.2,0,7); x.fill(); }
+    x.restore();
+    // center: YOU
+    const pulse=1+0.05*Math.sin(t*2);
+    const yg=x.createRadialGradient(cx,cy,0,cx,cy,44*pulse);
+    yg.addColorStop(0,'#fff6dd'); yg.addColorStop(.4,'#FFD27A'); yg.addColorStop(1,'rgba(255,210,122,0)');
+    x.fillStyle=yg; x.beginPath(); x.arc(cx,cy,44*pulse,0,7); x.fill();
+    x.fillStyle='#241a05'; x.font='900 13px Segoe UI'; x.textAlign='center'; x.fillText('YOU',cx,cy+4);
+    // proven skills spiral out on the golden angle
+    const maxR=Math.min(W,H)*0.40;
+    planets.forEach((p,i)=>{
+      const a=i*2.39996, r=70+Math.sqrt((i+1)/planets.length)*(maxR-70);
+      const px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r;
+      const bright=Math.min(1,0.45+(p.xp||0)/200);
+      const tw=0.75+0.25*Math.sin(t*2.2+i*1.7);
+      // thread back to YOU
+      x.globalAlpha=0.10; x.strokeStyle='#FFD27A'; x.lineWidth=1;
+      x.beginPath(); x.moveTo(cx,cy); x.lineTo(px,py); x.stroke(); x.globalAlpha=1;
+      // the star
+      const rad=(4+bright*5)*tw;
+      const g2=x.createRadialGradient(px,py,0,px,py,rad*2.6);
+      g2.addColorStop(0,'#ffffff'); g2.addColorStop(.35,'#9fe8ff'); g2.addColorStop(1,'rgba(159,232,255,0)');
+      x.fillStyle=g2; x.beginPath(); x.arc(px,py,rad*2.6,0,7); x.fill();
+      // name
+      x.fillStyle='rgba(232,238,252,'+(0.55+bright*0.45)+')';
+      x.font=(11+bright*3)+'px Segoe UI'; x.textAlign='center';
+      x.fillText(p.name, px, py+rad*2.6+12);
+    });
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+}
+function closeTree(){ treeOpen=false; document.getElementById('tree').style.display='none'; }
+
+/* ============ main loop ============ */
+function loop(){
+  requestAnimationFrame(loop);
+  const {renderer,scene,camera}=THREEJS; if(!renderer) return;
+  const dt=Math.min(clock.getDelta(),.05);
+  const t=clock.elapsedTime;
+
+  let mx=0,mz=0;
+  if(!treeOpen){
+    if(keys['w']||keys['arrowup'])mz-=1; if(keys['s']||keys['arrowdown'])mz+=1;
+    if(keys['a']||keys['arrowleft'])mx-=1; if(keys['d']||keys['arrowright'])mx+=1;
+    if(TOUCH.active){mx+=TOUCH.x; mz+=TOUCH.z;}
+  }
+  const moving=(mx||mz);
+  if(moving){
+    const len=Math.hypot(mx,mz); mx/=len; mz/=len; const spd=6.0;
+    const nx=avatar.position.x+mx*spd*dt, nz=avatar.position.z+mz*spd*dt;
+    if(Math.hypot(nx,nz)<16){ avatar.position.x=nx; avatar.position.z=nz; }   // stay on the island
+    avatar.rotation.y=Math.atan2(mx,mz);
+    if(walkAction) walkAction.paused=false;
+    if(avatar._placeholder){ avatar.position.y=Math.abs(Math.sin(t*10))*0.06; }
+  } else {
+    if(walkAction) walkAction.paused=true;
+    if(avatar._placeholder) avatar.position.y=0;
+  }
+  if(mixer) mixer.update(dt);
+
+  // camera: gentle follow
+  const desired=new THREE.Vector3(avatar.position.x*0.6,8.5,avatar.position.z*0.6+13);
+  camera.position.lerp(desired,1-Math.pow(0.001,dt));
+  camera.lookAt(new THREE.Vector3(avatar.position.x,1.4,avatar.position.z));
+
+  // life: orbs bob, crystal spins, fire flickers, embers rise
+  monoliths.forEach((m,i)=>{ m.group._orb.position.y+=Math.sin(t*2+i)*0.0022; m.group._orb.rotation.y+=dt; });
+  if(shrine){ shrine.group._crys.rotation.y+=dt*.7; shrine.group._crys.position.y=3.1+Math.sin(t*1.4)*.12; }
+  if(fire){ fire._light.intensity=1.35+Math.sin(t*11)*.25+Math.random()*.15; fire._flame.scale.y=3+Math.sin(t*9)*.3;
+    if(embers){ const p=embers.geometry.attributes.position; for(let i=0;i<p.count;i++){ let y=p.getY(i)+dt*(0.5+((i*7)%10)/10);
+      if(y>3.2)y=0; p.setY(i,y);} p.needsUpdate=true; } }
+
+  // clouds drift in a slow orbit
+  for(const cl of clouds){ cl.userData._a+=dt*0.02; const r=cl.userData._r;
+    cl.position.set(Math.cos(cl.userData._a)*r, cl.userData._y+Math.sin(t*0.5+r)*0.4, Math.sin(cl.userData._a)*r); }
+
+  if(!treeOpen) updatePrompt();
+  renderer.render(scene,camera);
+}
+
+renderConnect();
+</script>
+</body>
+</html>

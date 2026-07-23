@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASCENT — your Virtual Me, embodied</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{--bg:#03060b;--line:#1c2636;--ink:#e8eefc;--dim:#8b98b0;--gold:#FFD27A}
+  *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",system-ui,sans-serif;overflow:hidden}
+  #unity-canvas{position:fixed;inset:0;width:100%;height:100%;display:block;background:var(--bg)}
+  #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;
+    background:radial-gradient(1000px 700px at 60% -10%,#0b1830 0%,transparent 60%),var(--bg)}
+  .wrap{max-width:720px;padding:26px 22px}
+  .brand{letter-spacing:.32em;font-size:12px;color:var(--dim);text-transform:uppercase}
+  .brand b{color:var(--gold)}
+  h1{font-size:30px;margin:12px 0 6px;font-weight:800;color:#fff}
+  .sub{color:var(--dim);font-size:15px;line-height:1.55;max-width:540px}
+  .card{background:#0a0f18;border:1px solid var(--line);border-radius:16px;padding:22px;margin-top:16px;
+    display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+  .qrbox{width:170px;height:170px;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;padding:10px}
+  .qrbox img,.qrbox canvas{width:150px;height:150px}
+  .status{font-size:15px;font-weight:600;color:var(--gold)}
+  #load{margin-top:14px;color:var(--dim);font-size:13px}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);padding:10px 16px;border-radius:12px;cursor:pointer}
+</style>
+</head>
+<body>
+<canvas id="unity-canvas"></canvas>
+<div id="gate"><div class="wrap">
+  <div class="brand">ASCENT &nbsp;·&nbsp; <b>your Virtual Me, embodied</b></div>
+  <h1>Stand inside your own progress.</h1>
+  <p class="sub">Open <b style="color:var(--gold)">Virtual Me</b> → <b>Settings → Connect a Game</b> → scan the code.
+  The scan is the key — every session reads your CURRENT level.</p>
+  <div class="card">
+    <div><div class="qrbox" id="qr"><span style="color:#0a0f18;font-family:monospace;font-size:12px">generating…</span></div></div>
+    <div style="flex:1;min-width:200px">
+      <div class="status" id="status">Loading the world…</div>
+      <div id="load">Unity is starting in the background.</div>
+      <div style="margin-top:12px"><button class="ghost" onclick="useSample()">Try a sample self →</button></div>
+    </div>
+  </div>
+</div></div>
+
+<script src="Build/AscentWeb.loader.js"></script>
+<script>
+var FB={apiKey:"AIzaSyB6j1n4ai_mnJIc7-FdIw6TivY7Utnm7sI",authDomain:"virtual-me-growth-dev.firebaseapp.com",
+  projectId:"virtual-me-growth-dev",storageBucket:"virtual-me-growth-dev.firebasestorage.app",
+  messagingSenderId:"898339489460",appId:"1:898339489460:web:02df5b8bdf8a587283b9e1"};
+var FDB=null, unity=null, profileJson=null, SESSION='asc-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+try{ firebase.initializeApp(FB); FDB=firebase.firestore(); }catch(e){}
+
+function deliver(){  // both Unity AND the profile must be ready
+  if(!unity||!profileJson) return;
+  unity.SendMessage('AscentPassport','OnPassportJson',profileJson);
+  document.getElementById('gate').style.display='none';
+}
+function gotProfile(p){ profileJson=JSON.stringify(p);
+  document.getElementById('status').textContent='Connected: '+(p.name||'Traveler')+' ✓'; deliver(); }
+function useSample(){ gotProfile({name:"The Sample Self",
+  stats:[{key:"STR",abilityNow:72},{key:"DEX",abilityNow:58},{key:"CON",abilityNow:64},
+         {key:"INT",abilityNow:61},{key:"WIS",abilityNow:57},{key:"CHA",abilityNow:55}],
+  planets:[{id:"programming",name:"Programming",xp:120},{id:"language-spanish",name:"Spanish",xp:80},
+           {id:"prayer",name:"Prayer",xp:60},{id:"chess-tactics",name:"Chess Tactics",xp:90}]}); }
+
+try{ new QRCode(document.getElementById('qr'),{text:"vmorigins://connect?s="+SESSION+"&g=ASCENT",
+  width:150,height:150,colorDark:"#050a14",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M}); }catch(e){}
+if(FDB){ try{ var un=FDB.collection('pairingSessions').doc(SESSION).onSnapshot(function(s){
+  if(s&&s.exists){var d=s.data(); if(d&&d.status==='connected'&&d.profile){ try{un();}catch(e){} gotProfile(d.profile); }}
+},function(e){}); }catch(e){} }
+
+createUnityInstance(document.querySelector("#unity-canvas"),{
+  dataUrl:"Build/AscentWeb.data.unityweb", frameworkUrl:"Build/AscentWeb.framework.js.unityweb",
+  codeUrl:"Build/AscentWeb.wasm.unityweb", streamingAssetsUrl:"StreamingAssets",
+  companyName:"Virtual Me", productName:"ASCENT", productVersion:"0.1.0",
+},function(p){ document.getElementById('load').textContent='Loading the world… '+Math.round(p*100)+'%';
+}).then(function(u){ unity=u; document.getElementById('load').textContent='World ready — scan to enter.'; deliver();
+}).catch(function(e){ document.getElementById('load').textContent='Load error: '+e; });
+</script>
+</body>
+</html>

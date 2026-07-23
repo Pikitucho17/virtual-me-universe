@@ -59,6 +59,8 @@
     padding:13px 22px;border-radius:12px;cursor:pointer;font-size:15px;pointer-events:auto}
   .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);padding:11px 18px;border-radius:12px;cursor:pointer;font-size:14px;pointer-events:auto}
   .teaser{margin-top:14px;color:var(--dim);font-size:14px;line-height:1.6}
+  #integ{position:absolute;top:16px;right:16px;font-size:15px;letter-spacing:3px;
+    background:rgba(6,10,18,.72);border:1px solid var(--line);border-radius:12px;padding:7px 12px}
   #objective{position:absolute;top:64px;left:50%;transform:translateX(-50%);font-size:13px;font-weight:700;
     color:#7fe9ff;background:rgba(6,10,18,.72);border:1px solid var(--line);border-radius:20px;padding:6px 14px;letter-spacing:.03em}
   #touchui{display:none}
@@ -83,6 +85,7 @@
   <div id="toast"></div>
   <div id="prompt"><div class="act"></div><div class="meta"></div></div>
   <div id="objective"></div>
+  <div id="integ"></div>
   <div id="hint">W A S D / arrows to move &nbsp;·&nbsp; E to act &nbsp;·&nbsp; (touch: stick + ACT)</div>
   <div id="touchui"><div id="joy"><div id="knob"></div></div><div id="actbtn">ACT</div></div>
 </div>
@@ -164,7 +167,7 @@ function renderConnect(){
         <ul class="safe">
           <li>Your avatar walks the room as you</li>
           <li>Your real STR / DEX / INT open the way</li>
-          <li>Same trial for everyone — different paths</li>
+          <li>Three suit hits and the run is LOST — the warden is real</li>
         </ul>
       </div>
     </div>
@@ -182,6 +185,7 @@ let THREEJS={};
 let PROFILE=null;
 let mechanisms=[], exitGate=null, exitOpen=false, won=false, usedPath="";
 let carrying=false, cell=null, drone=null, TOUCH={active:false,x:0,z:0};
+let integrity=3, dead=false;
 const keys={};
 const clock = (window.THREE)?new THREE.Clock():null;
 let mixer=null, walkAction=null, avatar=null, avatarReady=false;
@@ -298,7 +302,7 @@ function startGame(profile){
     scene.add(dg);
     drone={group:dg,angle:0};
   }
-  carrying=false;
+  carrying=false; integrity=3; dead=false; setIntegrity();
   setObjective("Find the POWER CELL — the room is dead without it");
 
   // exit gate
@@ -352,6 +356,48 @@ function addMechanism(scene,cfg){
 
 function setObjective(t){ const o=hudEl('objective'); if(o) o.textContent=t; }
 
+function setIntegrity(){
+  const el=hudEl('integ'); if(!el) return;
+  el.innerHTML='SUIT '+'<span style="color:#39d98a">'+'◆'.repeat(Math.max(0,integrity))+'</span>'
+    +'<span style="color:#3a465f">'+'◇'.repeat(Math.max(0,3-integrity))+'</span>';
+}
+
+function die(){
+  if(dead||won) return; dead=true;
+  overlay.style.display='flex';
+  ov.innerHTML=`
+    <div class="brand">THRESHOLD &nbsp;·&nbsp; <b style="color:#ff6b6b">suit breached</b></div>
+    <h1 style="background:linear-gradient(90deg,#fff,#ff9d9d 60%,#ff6b6b);-webkit-background-clip:text;background-clip:text;color:transparent">The room keeps you.</h1>
+    <p class="sub">Third hit — your suit gives out and the trial pulls you back to the start of it all.
+    This run is lost. The room doesn't care how close you were.</p>
+    <div class="teaser">Your real profile is untouched — a game can never change who you are.
+    But the RUN can be lost. Watch the warden's pattern; it hunts faster once you hold the cell.</div>
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="primary" onclick="resetRun()">↺ Try the room again</button>
+      <button class="ghost" onclick="backToConnect()">Connect a different passport</button>
+    </div>`;
+}
+
+function resetRun(){
+  // rebuild the RUN, not the page — the passport stays connected
+  const scene=THREEJS.scene; if(!scene) return;
+  avatar.position.set(0,avatar.position.y>1?0:avatar.position.y,14); avatar.rotation.y=Math.PI;
+  if(carrying && cell){ scene.add(cell.group); }
+  carrying=false;
+  for(const m of mechanisms){
+    m.done=false;
+    m.orb.material.color.set(m.cfg.color); m.orb.material.emissive.set(m.cfg.color);
+  }
+  exitOpen=false;
+  if(exitGate){ exitGate.material.color.set(0xff6b6b); exitGate.material.emissive.set(0x330000); }
+  if(drone){ drone.angle=0; }
+  integrity=3; dead=false; won=false; usedPath="";
+  setIntegrity();
+  setObjective("Find the POWER CELL — the room is dead without it");
+  clock.start();
+  overlay.style.display='none';
+}
+
 function setupTouch(){
   const joy=hudEl('joy'), knob=hudEl('knob'), act=hudEl('actbtn');
   const R=45;
@@ -397,7 +443,7 @@ function updatePrompt(){
 }
 
 function tryInteract(){
-  if(!nearMech||nearMech.done||won) return;
+  if(!nearMech||nearMech.done||won||dead) return;
   const u=canUse(nearMech);
   if(!u.ok){ toast("Not "+nearMech.cfg.verb+" enough for that one.","var(--red)"); return; }
   nearMech.done=true;
@@ -449,7 +495,7 @@ function loop(){
   if(keys['a']||keys['arrowleft']) mx-=1;
   if(keys['d']||keys['arrowright']) mx+=1;
   if(TOUCH.active){ mx+=TOUCH.x; mz+=TOUCH.z; }
-  const moving=(mx||mz)&&!won;
+  const moving=(mx||mz)&&!won&&!dead;
   if(moving){
     const len=Math.hypot(mx,mz); mx/=len; mz/=len;
     const spd=6.2;
@@ -476,19 +522,22 @@ function loop(){
     cell.group.position.y=Math.sin(clock.elapsedTime*2.4)*0.09;
     if(avatar.position.distanceTo(cell.pos)<1.7){
       carrying=true; THREEJS.scene.remove(cell.group);
-      toast("POWER CELL acquired ⚡","var(--green)");
-      setObjective("Power a door — pick one YOUR real self can open");
+      toast("POWER CELL acquired ⚡ — the warden senses it","var(--green)");
+      setObjective("Power a door — pick one YOUR real self can open. The warden is faster now.");
     }
   }
-  // warden drone: slow circular patrol; touch = thrown back to the start
-  if(drone && !won){
-    drone.angle+=dt*0.55;
+  // warden drone: patrol; hits COST SUIT INTEGRITY (3 hits = run lost).
+  // It hunts faster once you hold the cell — the walk back is the tense part.
+  if(drone && !won && !dead){
+    drone.angle+=dt*(carrying?0.95:0.55);
     const dx=Math.cos(drone.angle)*8, dz=Math.sin(drone.angle)*8-2;
     drone.group.position.set(dx,0,dz);
     drone.group.rotation.y=-drone.angle;
     if(avatar.position.distanceTo(drone.group.position)<1.6){
+      integrity--; setIntegrity();
       avatar.position.set(0,avatar.position.y,14);
-      toast("The warden flung you back — watch its pattern","var(--red)");
+      if(integrity<=0){ die(); }
+      else toast(`The warden hit you — SUIT ${integrity}/3`,"var(--red)");
     }
   }
   // spin orbs
@@ -496,7 +545,7 @@ function loop(){
   if(exitGate){ exitGate.material.opacity=exitOpen?(0.55+Math.sin(clock.elapsedTime*3)*0.15):0.9; }
 
   // check exit
-  if(exitOpen && !won){
+  if(exitOpen && !won && !dead){
     const d=Math.hypot(avatar.position.x-exitGate.position.x, avatar.position.z-exitGate.position.z);
     if(d<2.4) win();
   }

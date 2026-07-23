@@ -242,10 +242,10 @@ const SCENES = [
       {type:"stat",stat:"CHA",threshold:65,text:"Persuade it you mean no harm.",
        ok:"You hold its gaze and mean it. It believes you.",
        rusty:"",fail:"It doesn't buy your reassurance.",recap:"tried to reassure the sentinel"},
-      {type:"stat",stat:"STR",threshold:72,text:"Overpower its housing while it's still cycling.",
+      {type:"stat",stat:"STR",threshold:72,risk:2,text:"Overpower its housing while it's still cycling.",
        ok:"You get inside its reach and pin the actuator before it can lock on.",
        rusty:"You commit — a beat slower than you once were — and just barely make it.",
-       fail:"It's faster than you. You back off before it fires.",recap:"muscled past the sentinel"},
+       fail:"It's faster than you. It FIRES — you take the hit getting clear.",recap:"muscled past the sentinel"},
       {type:"always",text:"Slip past in the gap while it cycles power.",
        ok:"You time the gap and make it through, heart pounding.",recap:"slipped past the sentinel"}
     ]
@@ -264,7 +264,7 @@ const SCENES = [
 ];
 
 /* ============ ENGINE ============ */
-let S = { profile:null, key:null, i:0, recap:[], flag:null, unique:0, wins:0, rolls:0, care:null };
+let S = { profile:null, key:null, i:0, recap:[], flag:null, unique:0, wins:0, rolls:0, care:null, hp:3 };
 const app = document.getElementById('app');
 
 function statDot(stat,threshold){
@@ -307,7 +307,7 @@ function hud(){
   const appChips=(p.apps||[]).map(a=>`<span class="chip">${APP_LABEL[a]||a} ✓</span>`).join("");
   return `<div class="hud">
     <div class="hud-top"><div class="hud-name">${p.name}<span>${p.real?'live from Virtual Me':'sample profile'}</span></div>
-    <div class="pill">read-only · the game never changes these</div></div>
+    <div class="pill" style="color:#ff8c8c;border-color:#4a2233">RESOLVE ${"❤".repeat(Math.max(0,S.hp))}${"·".repeat(Math.max(0,3-S.hp))} — at 0, the station keeps you</div></div>
     <div class="stats">${stats}</div>
     <div class="hud-skills">${appChips}${skillChips}</div>
   </div>`;
@@ -369,7 +369,7 @@ function pick(key){ startRun(PROFILES[key], key); }
 
 function startRun(profile, key){
   S.key=key; S.profile=profile; S.i=0; S.recap=[]; S.flag=null;
-  S.unique=0; S.wins=0; S.rolls=0; S.care=null;
+  S.unique=0; S.wins=0; S.rolls=0; S.care=null; S.hp=3;
   app.innerHTML=`<div class="brand"><b>ATLAS</b> &nbsp;·&nbsp; reading your passport</div>
     <div class="card"><div class="scan" id="scan"></div></div>`;
   const proven = (profile.skills&&profile.skills.length) ? profile.skills.map(s=>SKILL_LABEL[s]||s).join(", ")
@@ -434,7 +434,11 @@ function choose(idx){
   const parts=[`${fmt(cp.mod)} ${cp.stat} ${cp.now}`];
   if(cp.skillBonus) parts.push(`+${cp.skillBonus} ${SKILL_LABEL[o.skill]}`);
   if(cp.legBonus) parts.push(`+${cp.legBonus} instinct`);
-  const outcome = success ? o.ok : (o.fail || "It doesn't go your way — but the passage still lets you through, the hard way.");
+  const cost = success ? 0 : (o.risk || 1);
+  if(!success) S.hp -= cost;
+  const outcome = success ? o.ok
+    : (o.fail || "It doesn't go your way — but the passage still lets you through, the hard way.")
+      + ` <b style="color:var(--red)">−${cost} RESOLVE</b>`;
   const mood = success ? "var(--green)" : "var(--red)";
   S.recap.push(success ? o.recap : ("struggled at "+SCENES[S.i].title.replace(/^[^·]*·\s*/,"")));
 
@@ -452,7 +456,7 @@ function choose(idx){
     die.textContent=1+Math.floor(Math.random()*20); n++;
     if(n>=14){ clearInterval(t);
       const rollLine=`🎲 d20 → ${roll} &nbsp; ${parts.join(" &nbsp; ")} &nbsp; = ${total} &nbsp; vs DC ${cp.dc} &nbsp; — ${success?"SUCCESS":"MISS"}`;
-      showOutcome(o, rollLine, outcome, mood);
+      if(S.hp<=0){ renderDeath(rollLine); } else { showOutcome(o, rollLine, outcome, mood); }
     }
   },70);
 }
@@ -470,6 +474,26 @@ function showOutcome(o, rollLine, outcome, mood){
 
 function next(){ S.i++; if(S.i<SCENES.length) renderScene(); else renderEnd(); }
 
+function renderDeath(rollLine){
+  const where=SCENES[S.i].title.replace(/^[^·]*·\s*/,"");
+  app.innerHTML=`${hud()}
+    <div class="card fade" style="border-color:#4a2233">
+      <div class="scene-title" style="color:var(--red)">THE STATION KEEPS YOU</div>
+      ${rollLine?`<div class="rollline" style="color:var(--red);border-color:var(--red)">${rollLine}</div>`:""}
+      <div class="scene-text" style="border-left:3px solid var(--red);padding-left:14px">
+        Your resolve gives out at <b>${where}</b>. The cold closes in, and the passage goes quiet.
+        This run is over — the station logs it unfinished.</div>
+      <p class="scene-text" style="color:var(--dim);margin-top:12px">Your real profile is untouched — a game can never
+      change who you are. But the run? The run you can lose. That's what makes crossing it mean something.</p>
+      <div class="opts" style="margin-top:16px;flex-direction:row;flex-wrap:wrap;gap:10px">
+        <button class="primary" onclick="startRun(S.profile, S.key)">↺ Walk it again</button>
+        <button class="ghost" onclick="renderConnect()">Connect a different passport</button>
+      </div>
+    </div>
+    <div class="foot">Same station · same you · the dice owe you nothing</div>`;
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
 function renderEnd(){
   const items=S.recap.map(r=>`<li>You ${r}.</li>`).join("");
   const careLine = S.care==="expert" ? "The survivor walks out beside you, arm properly dressed — they'll tell people a stranger knew exactly what to do."
@@ -479,7 +503,7 @@ function renderEnd(){
     ? "You spent your own way out to bring someone else home. The Atlas logs that too — the choices that cost you are the ones it remembers longest."
     : "You took the fast way out. The Atlas doesn't judge it — it just records who you were when it counted.")
     + " " + careLine;
-  const tally = `<p class="scene-text" style="margin-top:10px"><b style="color:var(--cyan)">${S.unique}</b> door${S.unique===1?"":"s"} on this run existed <b>only because of your proven record</b> · rolls won: <b>${S.wins}/${S.rolls}</b></p>`;
+  const tally = `<p class="scene-text" style="margin-top:10px"><b style="color:var(--cyan)">${S.unique}</b> door${S.unique===1?"":"s"} on this run existed <b>only because of your proven record</b> · rolls won: <b>${S.wins}/${S.rolls}</b> · resolve left: <b style="color:#ff8c8c">${S.hp}/3</b>${S.hp===1?" — that was close":""}</p>`;
   app.innerHTML=`${hud()}
     <div class="card fade">
       <div class="scene-title">The passage, as only ${S.profile.name} could walk it</div>

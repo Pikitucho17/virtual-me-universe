@@ -264,7 +264,7 @@ const SCENES = [
 ];
 
 /* ============ ENGINE ============ */
-let S = { profile:null, key:null, i:0, recap:[], flag:null };
+let S = { profile:null, key:null, i:0, recap:[], flag:null, unique:0, wins:0, rolls:0, care:null };
 const app = document.getElementById('app');
 
 function statDot(stat,threshold){
@@ -334,7 +334,8 @@ function renderConnect(){
         </ul>
       </div>
     </div>
-    <div class="foot">Prototype · this same scan is the handshake every future game will use. One passport, any game.</div>`;
+    <div style="margin-top:14px"><button class="ghost" onclick="renderStart()">Try a sample self instead →</button></div>
+    <div class="foot">Prototype · this same scan is the handshake every future game will use. One passport, any game. Playing as YOURSELF always starts with the scan — that's the key.</div>`;
   const link="vmorigins://connect?s="+SESSION+"&g=ATLAS";
   try{
     const el=document.getElementById('qr');
@@ -368,6 +369,7 @@ function pick(key){ startRun(PROFILES[key], key); }
 
 function startRun(profile, key){
   S.key=key; S.profile=profile; S.i=0; S.recap=[]; S.flag=null;
+  S.unique=0; S.wins=0; S.rolls=0; S.care=null;
   app.innerHTML=`<div class="brand"><b>ATLAS</b> &nbsp;·&nbsp; reading your passport</div>
     <div class="card"><div class="scan" id="scan"></div></div>`;
   const proven = (profile.skills&&profile.skills.length) ? profile.skills.map(s=>SKILL_LABEL[s]||s).join(", ")
@@ -412,25 +414,50 @@ function renderScene(){
 
 function choose(idx){
   const o=SCENES[S.i].options[idx];
-  let rollLine="", outcome, mood;
+  // scene II is the survivor: remember HOW you handled them (the ending remembers)
+  const isSurvivor = S.i===1;
   if(o.type==="always" || o.type==="choice"){
-    outcome=o.ok; mood = o.type==="choice" ? "var(--violet)" : "var(--green)";
     if(o.flag) S.flag=o.flag;
+    if(isSurvivor) S.care = "rough";
     S.recap.push(o.recap);
-  } else {
-    const cp=checkParams(o);
-    const roll=1+Math.floor(Math.random()*20);
-    const total=roll+cp.mod+cp.skillBonus+cp.legBonus;
-    const success = total>=cp.dc;
-    const fmt=(n)=>(n>=0?"+":"")+n;
-    const parts=[`${fmt(cp.mod)} ${cp.stat} ${cp.now}`];
-    if(cp.skillBonus) parts.push(`+${cp.skillBonus} ${SKILL_LABEL[o.skill]}`);
-    if(cp.legBonus) parts.push(`+${cp.legBonus} instinct`);
-    rollLine=`🎲 d20 → ${roll} &nbsp; ${parts.join(" &nbsp; ")} &nbsp; = ${total} &nbsp; vs DC ${cp.dc} &nbsp; — ${success?"SUCCESS":"MISS"}`;
-    outcome = success ? o.ok : (o.fail || "It doesn't go your way — but the passage still lets you through, the hard way.");
-    mood = success ? "var(--green)" : "var(--red)";
-    S.recap.push(success ? o.recap : ("struggled at "+SCENES[S.i].title.replace(/^[^·]*·\s*/,"")));
+    showOutcome(o, "", o.ok, o.type==="choice" ? "var(--violet)" : "var(--green)");
+    return;
   }
+  if(o.type==="skill") S.unique++;   // a door that existed ONLY because of your proven record
+  const cp=checkParams(o);
+  const roll=1+Math.floor(Math.random()*20);
+  const total=roll+cp.mod+cp.skillBonus+cp.legBonus;
+  const success = total>=cp.dc;
+  S.rolls++; if(success) S.wins++;
+  if(isSurvivor) S.care = success ? (o.skill==="firstaid" ? "expert" : "okay") : "rough";
+  const fmt=(n)=>(n>=0?"+":"")+n;
+  const parts=[`${fmt(cp.mod)} ${cp.stat} ${cp.now}`];
+  if(cp.skillBonus) parts.push(`+${cp.skillBonus} ${SKILL_LABEL[o.skill]}`);
+  if(cp.legBonus) parts.push(`+${cp.legBonus} instinct`);
+  const outcome = success ? o.ok : (o.fail || "It doesn't go your way — but the passage still lets you through, the hard way.");
+  const mood = success ? "var(--green)" : "var(--red)";
+  S.recap.push(success ? o.recap : ("struggled at "+SCENES[S.i].title.replace(/^[^·]*·\s*/,"")));
+
+  // ---- the ROLL, animated: numbers tumble, then the die settles ----
+  app.innerHTML=`${hud()}
+    <div class="card fade">
+      <div class="scene-title">${SCENES[S.i].title}</div>
+      <div class="rollline" id="rolling">🎲 d20 → <span id="die" style="font-size:16px">?</span> &nbsp; ${parts.join(" &nbsp; ")} &nbsp; vs DC ${cp.dc}</div>
+      <div class="scene-text" style="color:var(--dim)">The die is rolling…</div>
+    </div>`;
+  window.scrollTo({top:0,behavior:"smooth"});
+  const die=document.getElementById('die');
+  let n=0;
+  const t=setInterval(()=>{
+    die.textContent=1+Math.floor(Math.random()*20); n++;
+    if(n>=14){ clearInterval(t);
+      const rollLine=`🎲 d20 → ${roll} &nbsp; ${parts.join(" &nbsp; ")} &nbsp; = ${total} &nbsp; vs DC ${cp.dc} &nbsp; — ${success?"SUCCESS":"MISS"}`;
+      showOutcome(o, rollLine, outcome, mood);
+    }
+  },70);
+}
+
+function showOutcome(o, rollLine, outcome, mood){
   app.innerHTML=`${hud()}
     <div class="card fade">
       <div class="scene-title">${SCENES[S.i].title}</div>
@@ -445,13 +472,19 @@ function next(){ S.i++; if(S.i<SCENES.length) renderScene(); else renderEnd(); }
 
 function renderEnd(){
   const items=S.recap.map(r=>`<li>You ${r}.</li>`).join("");
-  const line = S.flag==="wise"
+  const careLine = S.care==="expert" ? "The survivor walks out beside you, arm properly dressed — they'll tell people a stranger knew exactly what to do."
+    : S.care==="okay" ? "The survivor makes it out, pale but steady — your improvised care held."
+    : "The survivor makes it out, barely — they'll carry that scar, and so will you.";
+  const line = (S.flag==="wise"
     ? "You spent your own way out to bring someone else home. The Atlas logs that too — the choices that cost you are the ones it remembers longest."
-    : "You took the fast way out. The Atlas doesn't judge it — it just records who you were when it counted.";
+    : "You took the fast way out. The Atlas doesn't judge it — it just records who you were when it counted.")
+    + " " + careLine;
+  const tally = `<p class="scene-text" style="margin-top:10px"><b style="color:var(--cyan)">${S.unique}</b> door${S.unique===1?"":"s"} on this run existed <b>only because of your proven record</b> · rolls won: <b>${S.wins}/${S.rolls}</b></p>`;
   app.innerHTML=`${hud()}
     <div class="card fade">
       <div class="scene-title">The passage, as only ${S.profile.name} could walk it</div>
       <ul class="recap">${items}</ul>
+      ${tally}
       <p class="scene-text" style="color:var(--dim)">${line}</p>
       <div class="teaser">
         <p class="scene-text"><b>That was a 2‑minute sketch of you.</b> The real Virtual Me reads your whole proven life —

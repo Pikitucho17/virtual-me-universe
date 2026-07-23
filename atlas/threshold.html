@@ -59,6 +59,16 @@
     padding:13px 22px;border-radius:12px;cursor:pointer;font-size:15px;pointer-events:auto}
   .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);padding:11px 18px;border-radius:12px;cursor:pointer;font-size:14px;pointer-events:auto}
   .teaser{margin-top:14px;color:var(--dim);font-size:14px;line-height:1.6}
+  #objective{position:absolute;top:64px;left:50%;transform:translateX(-50%);font-size:13px;font-weight:700;
+    color:#7fe9ff;background:rgba(6,10,18,.72);border:1px solid var(--line);border-radius:20px;padding:6px 14px;letter-spacing:.03em}
+  #touchui{display:none}
+  #joy{position:fixed;left:26px;bottom:30px;width:124px;height:124px;border-radius:50%;
+    background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.22);pointer-events:auto;touch-action:none}
+  #knob{position:absolute;left:50%;top:50%;width:54px;height:54px;border-radius:50%;
+    background:rgba(127,233,255,.35);border:1.5px solid rgba(127,233,255,.7);transform:translate(-50%,-50%)}
+  #actbtn{position:fixed;right:28px;bottom:44px;width:86px;height:86px;border-radius:50%;pointer-events:auto;
+    background:rgba(0,229,255,.16);border:2px solid rgba(0,229,255,.65);color:#7fe9ff;font-weight:900;font-size:15px;
+    display:flex;align-items:center;justify-content:center;letter-spacing:.08em;touch-action:none;user-select:none}
   .teaser b{color:var(--cyan)}
 </style>
 </head>
@@ -72,7 +82,9 @@
   <div id="statbar"></div>
   <div id="toast"></div>
   <div id="prompt"><div class="act"></div><div class="meta"></div></div>
-  <div id="hint">W A S D / arrows to move &nbsp;·&nbsp; E to act at a mechanism</div>
+  <div id="objective"></div>
+  <div id="hint">W A S D / arrows to move &nbsp;·&nbsp; E to act &nbsp;·&nbsp; (touch: stick + ACT)</div>
+  <div id="touchui"><div id="joy"><div id="knob"></div></div><div id="actbtn">ACT</div></div>
 </div>
 
 <!-- connect + end overlays -->
@@ -92,6 +104,10 @@ const APP_SKILL = { github:"programming", stackoverflow:"programming", duolingo:
 const SKILL_LABEL = { programming:"Programming", language:"A Language", speaking:"Public Speaking",
   writing:"Writing", social:"Social", strategy:"Strategy" };
 const STAT_ORDER = ["STR","DEX","CON","INT","WIS","CHA"];
+// A clearly-labeled SAMPLE self so anyone can feel the game instantly.
+// Playing as YOURSELF always goes through the QR handshake - that is the key.
+const SAMPLE = { name:"The Sample Self", stats:{STR:72,DEX:58,CON:64,INT:61,WIS:57,CHA:55},
+  apps:[], skills:["programming"], avatar:null, sample:true };
 
 const FB_CONFIG = { apiKey:"AIzaSyB6j1n4ai_mnJIc7-FdIw6TivY7Utnm7sI",
   authDomain:"virtual-me-growth-dev.firebaseapp.com", projectId:"virtual-me-growth-dev",
@@ -152,7 +168,8 @@ function renderConnect(){
         </ul>
       </div>
     </div>
-    <div class="foot">Prototype · a second game, the same one-scan passport. One character, many worlds.</div>`;
+    <div style="margin-top:14px"><button class="ghost" onclick="startGame(SAMPLE)">Try a sample self instead →</button></div>
+    <div class="foot">Prototype · a second game, the same one-scan passport. One character, many worlds. Playing as YOURSELF always starts with the scan — that's the key.</div>`;
   const link="vmorigins://connect?s="+SESSION+"&g=THRESHOLD";
   try{ const el=document.getElementById('qr');
     if(window.QRCode){ el.innerHTML=""; new QRCode(el,{text:link,width:150,height:150,colorDark:"#050a14",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M}); }
@@ -164,6 +181,7 @@ function renderConnect(){
 let THREEJS={};
 let PROFILE=null;
 let mechanisms=[], exitGate=null, exitOpen=false, won=false, usedPath="";
+let carrying=false, cell=null, drone=null, TOUCH={active:false,x:0,z:0};
 const keys={};
 const clock = (window.THREE)?new THREE.Clock():null;
 let mixer=null, walkAction=null, avatar=null, avatarReady=false;
@@ -253,6 +271,36 @@ function startGame(profile){
   addMechanism(scene,{ pos:[13,10], color:0x8b98b0, stat:null, threshold:0,
     act:"Hand-crank the service hatch (slow but sure)", verb:"patience" });
 
+  // POWER CELL (2026-07-23 gameplay pass): the room is dead until you fetch it.
+  // Teaches movement, gives an objective, makes the stat-doors a real choice.
+  {
+    const cg=new THREE.Group();
+    const core=new THREE.Mesh(new THREE.BoxGeometry(.55,.9,.55),
+      new THREE.MeshStandardMaterial({color:0x00E5FF,emissive:0x00E5FF,emissiveIntensity:.9}));
+    core.position.y=.8; cg.add(core);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.55,.05,10,28),
+      new THREE.MeshStandardMaterial({color:0x7fe9ff,emissive:0x7fe9ff,emissiveIntensity:.6}));
+    ring.rotation.x=Math.PI/2; ring.position.y=.8; cg.add(ring);
+    cg.position.set(-13,0,11);
+    scene.add(cg);
+    cell={group:cg,core,ring,pos:new THREE.Vector3(-13,0,11)};
+  }
+  // WARDEN DRONE: a slow patrol you time your run around. Touching it throws
+  // you back to the start (you keep the cell) - a hazard, never a fail state.
+  {
+    const dg=new THREE.Group();
+    const body=new THREE.Mesh(new THREE.SphereGeometry(.6,18,18),
+      new THREE.MeshStandardMaterial({color:0xff6b6b,emissive:0xff2222,emissiveIntensity:.7}));
+    body.position.y=1.6; dg.add(body);
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(.16,10,10),
+      new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:1}));
+    eye.position.set(0,1.6,.55); dg.add(eye);
+    scene.add(dg);
+    drone={group:dg,angle:0};
+  }
+  carrying=false;
+  setObjective("Find the POWER CELL — the room is dead without it");
+
   // exit gate
   const gate=new THREE.Mesh(new THREE.BoxGeometry(4,3.4,.5),
     new THREE.MeshStandardMaterial({color:0xff6b6b,emissive:0x330000,emissiveIntensity:1,transparent:true,opacity:.9}));
@@ -262,6 +310,7 @@ function startGame(profile){
   addEventListener('keydown',e=>{ keys[e.key.toLowerCase()]=true; if(e.key.toLowerCase()==='e') tryInteract(); });
   addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
   addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); });
+  if('ontouchstart' in window){ hudEl('touchui').style.display='block'; setupTouch(); }
 
   won=false; usedPath=""; clock.start();
   loop();
@@ -301,7 +350,30 @@ function addMechanism(scene,cfg){
   mechanisms.push({ cfg, group:g, orb, done:false, pos:new THREE.Vector3(cfg.pos[0],0,cfg.pos[1]) });
 }
 
+function setObjective(t){ const o=hudEl('objective'); if(o) o.textContent=t; }
+
+function setupTouch(){
+  const joy=hudEl('joy'), knob=hudEl('knob'), act=hudEl('actbtn');
+  const R=45;
+  function setKnob(dx,dz){ knob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dz}px))`; }
+  function handle(e){
+    const t=e.touches[0]; if(!t) return;
+    const r=joy.getBoundingClientRect();
+    let dx=t.clientX-(r.left+r.width/2), dz=t.clientY-(r.top+r.height/2);
+    const len=Math.hypot(dx,dz)||1; const cl=Math.min(len,R);
+    dx=dx/len*cl; dz=dz/len*cl;
+    TOUCH={active:true,x:dx/R,z:dz/R}; setKnob(dx,dz);
+    e.preventDefault();
+  }
+  joy.addEventListener('touchstart',handle,{passive:false});
+  joy.addEventListener('touchmove',handle,{passive:false});
+  joy.addEventListener('touchend',()=>{ TOUCH={active:false,x:0,z:0}; setKnob(0,0); });
+  act.addEventListener('touchstart',(e)=>{ tryInteract(); e.preventDefault(); },{passive:false});
+}
+
 function canUse(m){
+  // the room is DEAD until the power cell is in hand - every door needs it
+  if(!carrying) return {ok:false, why:"no power — find the POWER CELL first"};
   const c=m.cfg;
   if(c.stat===null) return {ok:true, why:"anyone can — it just takes a while"};
   const val=PROFILE.stats[c.stat]||0;
@@ -332,6 +404,7 @@ function tryInteract(){
   nearMech.orb.material.color.set(0x39d98a); nearMech.orb.material.emissive.set(0x39d98a);
   usedPath=nearMech.cfg.stat||"grit";
   toast("Mechanism engaged — the threshold opens.","var(--green)");
+  setObjective("The threshold is OPEN — exit through the green gate");
   openExit();
 }
 
@@ -343,12 +416,15 @@ function openExit(){
 function win(){
   if(won) return; won=true;
   overlay.style.display='flex';
+  const secs=Math.round(clock.elapsedTime);
+  const timeStr=Math.floor(secs/60)+":"+String(secs%60).padStart(2,"0");
   const how = usedPath==="grit" ? "you cranked your way through by sheer patience"
     : `your ${usedPath} opened a way most people can't take`;
   ov.innerHTML=`
     <div class="brand">THRESHOLD &nbsp;·&nbsp; <b>cleared</b></div>
     <h1>You crossed as only you could.</h1>
     <p class="sub">${PROFILE.name}, ${how}. Same room, same locks — but your real strengths chose the route.</p>
+    <p class="sub" style="color:#7fe9ff;font-weight:700">Cleared in ${timeStr} · route: ${usedPath==="grit"?"patience":usedPath}${PROFILE.sample?" · sample self":""}</p>
     <div class="teaser">
       <b>This is a different game than the last one.</b> It read the same passport — your stats, your proven skills, and your 3D avatar — with no setup, no new character. <br><br>
       <b style="color:var(--cyan)">One character. Many worlds.</b> Play anywhere as yourself.
@@ -372,6 +448,7 @@ function loop(){
   if(keys['s']||keys['arrowdown']) mz+=1;
   if(keys['a']||keys['arrowleft']) mx-=1;
   if(keys['d']||keys['arrowright']) mx+=1;
+  if(TOUCH.active){ mx+=TOUCH.x; mz+=TOUCH.z; }
   const moving=(mx||mz)&&!won;
   if(moving){
     const len=Math.hypot(mx,mz); mx/=len; mz/=len;
@@ -393,6 +470,27 @@ function loop(){
   camera.position.lerp(desired,1-Math.pow(0.001,dt));
   camera.lookAt(camTarget);
 
+  // power cell: shimmer + pickup
+  if(cell && !carrying){
+    cell.ring.rotation.z+=dt*2; cell.core.rotation.y+=dt*1.2;
+    cell.group.position.y=Math.sin(clock.elapsedTime*2.4)*0.09;
+    if(avatar.position.distanceTo(cell.pos)<1.7){
+      carrying=true; THREEJS.scene.remove(cell.group);
+      toast("POWER CELL acquired ⚡","var(--green)");
+      setObjective("Power a door — pick one YOUR real self can open");
+    }
+  }
+  // warden drone: slow circular patrol; touch = thrown back to the start
+  if(drone && !won){
+    drone.angle+=dt*0.55;
+    const dx=Math.cos(drone.angle)*8, dz=Math.sin(drone.angle)*8-2;
+    drone.group.position.set(dx,0,dz);
+    drone.group.rotation.y=-drone.angle;
+    if(avatar.position.distanceTo(drone.group.position)<1.6){
+      avatar.position.set(0,avatar.position.y,14);
+      toast("The warden flung you back — watch its pattern","var(--red)");
+    }
+  }
   // spin orbs
   for(const m of mechanisms){ m.orb.rotation.y+=dt*1.5; m.orb.position.y=2.5+Math.sin(clock.elapsedTime*2+m.pos.x)*0.08; }
   if(exitGate){ exitGate.material.opacity=exitOpen?(0.55+Math.sin(clock.elapsedTime*3)*0.15):0.9; }

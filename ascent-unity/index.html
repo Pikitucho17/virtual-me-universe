@@ -66,7 +66,7 @@ function useSample(){ gotProfile({name:"The Sample Self",
   planets:[{id:"programming",name:"Programming",xp:120},{id:"language-spanish",name:"Spanish",xp:80},
            {id:"prayer",name:"Prayer",xp:60},{id:"chess-tactics",name:"Chess Tactics",xp:90}]}); }
 
-try{ new QRCode(document.getElementById('qr'),{text:"vmorigins://connect?s="+SESSION+"&g=ASCENT",
+try{ document.getElementById('qr').innerHTML=''; new QRCode(document.getElementById('qr'),{text:"vmorigins://connect?s="+SESSION+"&g=ASCENT",
   width:150,height:150,colorDark:"#050a14",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M}); }catch(e){}
 if(FDB){ try{ var un=FDB.collection('pairingSessions').doc(SESSION).onSnapshot(function(s){
   if(s&&s.exists){var d=s.data(); if(d&&d.status==='connected'&&d.profile){ try{un();}catch(e){} gotProfile(d.profile); }}

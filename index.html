@@ -94,6 +94,47 @@
       var boot = document.getElementById('boot');
       var fill = document.getElementById('fill');
 
+      // ===== MOBILE MEMORY (2026-07-25) =================================
+      // A tester's iPhone died with abort("OOM") / abortOnCannotGrowMemory while
+      // opening the Universe tab. The single biggest cause is the BACKING STORE:
+      // at devicePixelRatio 2 on a ~1170x2532 phone Unity allocates a ~2340x5064
+      // framebuffer plus every render target at that size, which blows straight
+      // past what iOS WKWebView will hand a single web view. Rendering at dpr 1
+      // on phones cuts that to a QUARTER and costs almost nothing visually on a
+      // screen this small. Desktop is untouched.
+      var VM_IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+      var VM_DPR = VM_IS_MOBILE ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+
+      // Unity aborts (including OOM) surface as a raw browser alert() full of wasm
+      // stack frames - which is exactly what the tester saw. Intercept it, show our
+      // own panel, and tell the app so the tab never hangs on the boot screen.
+      function vmFail(detail) {
+        var oom = /OOM|CannotGrowMemory|out of memory/i.test(String(detail || ''));
+        try { boot.style.display = 'none'; } catch (e) {}
+        document.getElementById('errtext').textContent = oom
+          ? 'The galaxy ran out of memory on this device. Close other apps and tabs, then open the Universe again.'
+          : 'The galaxy could not load. Check your connection and try again.';
+        document.getElementById('err').style.display = 'flex';
+        try {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'galaxy-error', reason: oom ? 'oom' : 'load', message: String(detail || ''),
+            }));
+          }
+        } catch (e) {}
+      }
+      var vmNativeAlert = window.alert;
+      window.alert = function (msg) {
+        var m = String(msg || '');
+        if (/Unity|abort\(|OOM|wasm/i.test(m)) { vmFail(m); return; }
+        return vmNativeAlert.apply(window, arguments);
+      };
+      window.addEventListener('error', function (e) {
+        var m = (e && e.message) || '';
+        if (/OOM|CannotGrowMemory|out of memory/i.test(m)) vmFail(m);
+      });
+
       createUnityInstance(document.querySelector('#unity-canvas'), {
         arguments: [],
         dataUrl: 'Build/Web.data.unityweb',
@@ -104,7 +145,7 @@
         productName: 'Virtual Me Universe',
         productVersion: '0.1.0',
         matchWebGLToCanvasSize: true,
-        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        devicePixelRatio: VM_DPR,
       }, function (progress) {
         fill.style.width = (progress * 100) + '%';
       }).then(function () {
@@ -116,15 +157,7 @@
           }
         } catch (e) {}
       }).catch(function (message) {
-        boot.style.display = 'none';
-        document.getElementById('errtext').textContent =
-          'The galaxy could not load. Check your connection and try again.';
-        document.getElementById('err').style.display = 'flex';
-        try {
-          if (window.ReactNativeWebView) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'galaxy-error', message: String(message) }));
-          }
-        } catch (e) {}
+        vmFail(message);
       });
     </script>
   </body>

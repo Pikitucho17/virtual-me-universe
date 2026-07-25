@@ -112,9 +112,15 @@
       function vmFail(detail) {
         var oom = /OOM|CannotGrowMemory|out of memory/i.test(String(detail || ''));
         try { boot.style.display = 'none'; } catch (e) {}
+        var lost = /webglcontextlost/i.test(String(detail || ''));
+        var stalled = /never-rendered/i.test(String(detail || ''));
         document.getElementById('errtext').textContent = oom
           ? 'The galaxy ran out of memory on this device. Close other apps and tabs, then open the Universe again.'
-          : 'The galaxy could not load. Check your connection and try again.';
+          : lost
+            ? 'This device stopped the 3D view to free memory (GPU). Close your other apps, then open the Universe again.'
+            : stalled
+              ? 'The galaxy loaded but this device could not start the 3D view. Close your other apps and reopen the Universe - if it keeps happening, tell Richard which iPhone you have.'
+              : 'The galaxy could not load. Check your connection and try again.';
         document.getElementById('err').style.display = 'flex';
         try {
           if (window.ReactNativeWebView) {
@@ -124,6 +130,23 @@
           }
         } catch (e) {}
       }
+      // A DEVICE CAN FAIL WITHOUT EVER ABORTING (2026-07-25). One tester's iPhone
+      // showed a totally black Universe: no galaxy, and none of Unity's own UI
+      // (search bar, My Planets, home button) - while the SAME build rendered fine
+      // on another iPhone. Unity resolved, nothing threw, so no alert and no catch.
+      // That is iOS killing the WebGL context under GPU/memory pressure, or the
+      // render loop never starting. Both are invisible without these two probes,
+      // and a black screen with no explanation is the worst thing a tester can get.
+      // The wording differs per cause ON PURPOSE so a screenshot tells us which.
+      (function () {
+        var cv = document.querySelector('#unity-canvas');
+        if (!cv) return;
+        cv.addEventListener('webglcontextlost', function (ev) {
+          try { ev.preventDefault(); } catch (e) {}
+          vmFail('webglcontextlost');
+        }, false);
+      })();
+
       var vmNativeAlert = window.alert;
       window.alert = function (msg) {
         var m = String(msg || '');
@@ -149,7 +172,17 @@
       }, function (progress) {
         fill.style.width = (progress * 100) + '%';
       }).then(function () {
-        boot.style.opacity = '0';
+        // WATCHDOG: Unity resolved, but did it ever actually DRAW? If the backing
+        // store is still the browser default 300x150 well after load, the render
+        // loop never ran and the user is staring at black with no idea why.
+        setTimeout(function () {
+          try {
+            var cv = document.querySelector('#unity-canvas');
+            if (cv && cv.width <= 300 && cv.height <= 150 && document.visibilityState === 'visible') {
+              vmFail('never-rendered');
+            }
+          } catch (e) {}
+        }, 15000);
         setTimeout(function () { boot.style.display = 'none'; }, 500);
         try {
           if (window.ReactNativeWebView) {

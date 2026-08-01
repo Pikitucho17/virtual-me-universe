@@ -69,7 +69,42 @@ function deliver(){
   document.getElementById('gate').style.display='none';
 }
 function gotProfile(p){ profileJson=JSON.stringify(p);
-  document.getElementById('status').textContent='Connected: '+(p.name||'Traveler')+' ✓'; deliver(); }
+  document.getElementById('status').textContent='Connected: '+(p.name||'Traveler')+' \u2713'; showAvatarUrl(p); deliver(); }
+
+// --- DEV HELPER -------------------------------------------------------
+// Shows the avatar URL the passport carried, with a copy button, so it can
+// be handed over without digging through Firestore. Harmless if absent.
+function showAvatarUrl(p){
+  try{
+    var a = p && p.avatar ? p.avatar : null;
+    var url = a ? (a.rigged || a.walking || a.idle || '') : '';
+    var box = document.getElementById('avatarbox');
+    if(!box){
+      box = document.createElement('div');
+      box.id = 'avatarbox';
+      box.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:99999;max-width:min(760px,92vw);'
+        + 'background:#0b0910;border:1px solid #6b5a2e;border-radius:8px;padding:10px 12px;'
+        + 'font:12px/1.45 system-ui,sans-serif;color:#e8e2d4;box-shadow:0 6px 24px rgba(0,0,0,.6)';
+      document.body.appendChild(box);
+    }
+    if(!url){
+      box.innerHTML = '<b style="color:#e0b24a">Avatar</b><br>This passport carried no avatar URL.'
+        + (a ? ' (avatar block present but empty)' : ' (no avatar block at all)');
+      return;
+    }
+    box.innerHTML = '<b style="color:#e0b24a">Your avatar URL</b> '
+      + '<button id="avcopy" style="margin-left:8px;cursor:pointer;background:#e0b24a;border:0;'
+      + 'border-radius:5px;padding:3px 10px;font-weight:700">Copy</button>'
+      + '<div style="margin-top:6px"><input id="avurl" readonly value="'
+      + url.replace(/"/g,'&quot;')
+      + '" style="width:100%;background:#161320;color:#cfe7ff;border:1px solid #3a3550;'
+      + 'border-radius:5px;padding:6px;font:11px monospace" onclick="this.select()"></div>';
+    document.getElementById('avcopy').onclick = function(){
+      var i = document.getElementById('avurl'); i.select();
+      try{ document.execCommand('copy'); this.textContent='Copied'; }catch(e){ this.textContent='Select + Ctrl-C'; }
+    };
+  }catch(e){}
+}
 
 function useSample(){ gotProfile({name:"The Sample Self",
   stats:[{key:"STR",abilityNow:72},{key:"DEX",abilityNow:58},{key:"CON",abilityNow:64},

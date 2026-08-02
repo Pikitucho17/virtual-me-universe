@@ -111,7 +111,14 @@ function useSample(){ gotProfile({name:"The Sample Self",
          {key:"INT",abilityNow:61},{key:"WIS",abilityNow:57},{key:"CHA",abilityNow:55}],
   planets:[{id:"programming",name:"Programming",xp:120},{id:"language-spanish",name:"Spanish",xp:80},
            {id:"prayer",name:"Prayer",xp:60},{id:"chess-tactics",name:"Chess Tactics",xp:90},
-           {id:"carpentry",name:"Carpentry",xp:70}]}); }
+           {id:"carpentry",name:"Carpentry",xp:70}],
+  // TEST FIXTURE ONLY. A real passport from Origins carries the player's own
+  // Meshy GLB here (avatar.rigged / .walking / .idle / .thumb). This is a
+  // public rigged humanoid from the Khronos glTF sample set, used purely to
+  // prove the import path end to end before a real avatar URL exists. Replace
+  // it with a real one and nothing else has to change.
+  avatar:{rigged:"https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/CesiumMan/glTF-Binary/CesiumMan.glb",
+          walking:"", idle:"", thumb:""}}); }
 
 try{ document.getElementById('qr').innerHTML='';
   new QRCode(document.getElementById('qr'),{text:"vmorigins://connect?s="+SESSION+"&g=DEPTHSOFGRACE",

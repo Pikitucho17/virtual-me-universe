@@ -1,140 +1,133 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Depths of Grace — your Virtual Me, embodied</title>
-<!--
-  THE HANDSHAKE LIVES HERE, NOT IN UNITY (owner ruling, carried from ASCENT).
-  This page does the QR + Firestore pairing in JavaScript, then hands the
-  profile into Unity with a single SendMessage. Unity never touches Firestore.
-  The scan is the key; every launch reads the CURRENT profile.
-  The SendMessage target name must stay 'GracePassport'.
--->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<style>
-  :root{--bg:#07060a;--line:#241f2c;--ink:#ece7dd;--dim:#8a8494;--gold:#e6b455}
-  *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
-    font-family:"Segoe UI",system-ui,sans-serif;overflow:hidden}
-  #unity-canvas{position:fixed;inset:0;width:100%;height:100%;display:block;background:var(--bg)}
-  #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;
-    background:radial-gradient(1100px 760px at 55% -15%,#161022 0%,transparent 62%),var(--bg)}
-  .wrap{max-width:740px;padding:26px 22px}
-  .brand{letter-spacing:.32em;font-size:12px;color:var(--dim);text-transform:uppercase}
-  .brand b{color:var(--gold)}
-  h1{font-size:32px;margin:12px 0 6px;font-weight:800;color:#fff;letter-spacing:-.5px}
-  .sub{color:var(--dim);font-size:15px;line-height:1.55;max-width:560px}
-  .card{background:#0d0b12;border:1px solid var(--line);border-radius:16px;padding:22px;margin-top:18px;
-    display:flex;gap:22px;align-items:center;flex-wrap:wrap}
-  .qrbox{width:170px;height:170px;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;padding:10px}
-  .qrbox img,.qrbox canvas{width:150px;height:150px}
-  .status{font-size:15px;font-weight:600;color:var(--gold)}
-  #load{margin-top:14px;color:var(--dim);font-size:13px}
-  .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);padding:10px 16px;border-radius:12px;cursor:pointer}
-  .ghost:hover{border-color:var(--gold);color:var(--ink)}
-</style>
-</head>
-<body>
-<canvas id="unity-canvas"></canvas>
-<div id="gate"><div class="wrap">
-  <div class="brand">DEPTHS OF GRACE &nbsp;·&nbsp; <b>your Virtual Me, embodied</b></div>
-  <h1>Descend as yourself.</h1>
-  <p class="sub">Open <b style="color:var(--gold)">Virtual Me</b> → <b>Settings → Connect a Game</b> → scan the code.
-  The scan is the key — every descent reads your CURRENT life.</p>
-  <div class="card">
-    <div><div class="qrbox" id="qr"><span style="color:#0d0b12;font-family:monospace;font-size:12px">generating…</span></div></div>
-    <div style="flex:1;min-width:200px">
-      <div class="status" id="status">Opening the gate…</div>
-      <div id="load">Unity is starting in the background.</div>
-      <div style="margin-top:12px"><button class="ghost" onclick="useSample()">Try a sample self →</button></div>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity Web Player | Depths of Grace</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+  </head>
+  <body>
+    <div id="unity-container" class="unity-desktop">
+      <canvas id="unity-canvas" width=960 height=600 tabindex="-1"></canvas>
+      <div id="unity-loading-bar">
+        <div id="unity-logo"></div>
+        <div id="unity-progress-bar-empty">
+          <div id="unity-progress-bar-full"></div>
+        </div>
+      </div>
+      <div id="unity-warning"> </div>
+      <div id="unity-footer">
+        <div id="unity-logo-title-footer"></div>
+        <div id="unity-fullscreen-button"></div>
+        <div id="unity-build-title">Depths of Grace</div>
+      </div>
     </div>
-  </div>
-</div></div>
+    <script>
+      var canvas = document.querySelector("#unity-canvas");
 
-<script src="Build/GraceWeb.loader.js"></script>
-<script>
-var FB={apiKey:"AIzaSyB6j1n4ai_mnJIc7-FdIw6TivY7Utnm7sI",authDomain:"virtual-me-growth-dev.firebaseapp.com",
-  projectId:"virtual-me-growth-dev",storageBucket:"virtual-me-growth-dev.firebasestorage.app",
-  messagingSenderId:"898339489460",appId:"1:898339489460:web:02df5b8bdf8a587283b9e1"};
-var FDB=null, unity=null, profileJson=null,
-    SESSION='dog-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
-try{ firebase.initializeApp(FB); FDB=firebase.firestore(); }catch(e){}
+      // Shows a temporary message banner/ribbon for a few seconds, or
+      // a permanent error message on top of the canvas if type=='error'.
+      // If type=='warning', a yellow highlight color is used.
+      // Modify or remove this function to customize the visually presented
+      // way that non-critical warnings and error messages are presented to the
+      // user.
+      function unityShowBanner(msg, type) {
+        var warningBanner = document.querySelector("#unity-warning");
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+        }
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type == 'error') div.style = 'background: red; padding: 10px;';
+        else {
+          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+          setTimeout(function() {
+            warningBanner.removeChild(div);
+            updateBannerVisibility();
+          }, 5000);
+        }
+        updateBannerVisibility();
+      }
 
-// both Unity AND the profile must be ready — either can win the race
-function deliver(){
-  if(!unity||!profileJson) return;
-  unity.SendMessage('GracePassport','OnPassportJson',profileJson);
-  document.getElementById('gate').style.display='none';
-}
-function gotProfile(p){ profileJson=JSON.stringify(p);
-  document.getElementById('status').textContent='Connected: '+(p.name||'Traveler')+' \u2713'; showAvatarUrl(p); deliver(); }
+      var buildUrl = "Build";
+      var loaderUrl = buildUrl + "/GraceWeb.loader.js";
+      var config = {
+        arguments: [],
+        dataUrl: buildUrl + "/GraceWeb.data.unityweb",
+        frameworkUrl: buildUrl + "/GraceWeb.framework.js.unityweb",
+        codeUrl: buildUrl + "/GraceWeb.wasm.unityweb",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "Virtual Me",
+        productName: "Depths of Grace",
+        productVersion: "1.0",
+        showBanner: unityShowBanner,
+        // errorHandler: function(err, url, line) {
+        //    alert("error " + err + " occurred at line " + line);
+        //    // Return 'true' if you handled this error and don't want Unity
+        //    // to process it further, 'false' otherwise.
+        //    return true;
+        // },
+      };
 
-// --- DEV HELPER -------------------------------------------------------
-// Shows the avatar URL the passport carried, with a copy button, so it can
-// be handed over without digging through Firestore. Harmless if absent.
-function showAvatarUrl(p){
-  try{
-    var a = p && p.avatar ? p.avatar : null;
-    var url = a ? (a.rigged || a.walking || a.idle || '') : '';
-    var box = document.getElementById('avatarbox');
-    if(!box){
-      box = document.createElement('div');
-      box.id = 'avatarbox';
-      box.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:99999;max-width:min(760px,92vw);'
-        + 'background:#0b0910;border:1px solid #6b5a2e;border-radius:8px;padding:10px 12px;'
-        + 'font:12px/1.45 system-ui,sans-serif;color:#e8e2d4;box-shadow:0 6px 24px rgba(0,0,0,.6)';
-      document.body.appendChild(box);
-    }
-    if(!url){
-      box.innerHTML = '<b style="color:#e0b24a">Avatar</b><br>This passport carried no avatar URL.'
-        + (a ? ' (avatar block present but empty)' : ' (no avatar block at all)');
-      return;
-    }
-    box.innerHTML = '<b style="color:#e0b24a">Your avatar URL</b> '
-      + '<button id="avcopy" style="margin-left:8px;cursor:pointer;background:#e0b24a;border:0;'
-      + 'border-radius:5px;padding:3px 10px;font-weight:700">Copy</button>'
-      + '<div style="margin-top:6px"><input id="avurl" readonly value="'
-      + url.replace(/"/g,'&quot;')
-      + '" style="width:100%;background:#161320;color:#cfe7ff;border:1px solid #3a3550;'
-      + 'border-radius:5px;padding:6px;font:11px monospace" onclick="this.select()"></div>';
-    document.getElementById('avcopy').onclick = function(){
-      var i = document.getElementById('avurl'); i.select();
-      try{ document.execCommand('copy'); this.textContent='Copied'; }catch(e){ this.textContent='Select + Ctrl-C'; }
-    };
-  }catch(e){}
-}
+      // By default, Unity keeps WebGL canvas render target size matched with
+      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
+      // Set this to false if you want to decouple this synchronization from
+      // happening inside the engine, and you would instead like to size up
+      // the canvas DOM size and WebGL render target sizes yourself.
+      // config.matchWebGLToCanvasSize = false;
 
-function useSample(){ gotProfile({name:"The Sample Self",
-  stats:[{key:"STR",abilityNow:72},{key:"DEX",abilityNow:58},{key:"CON",abilityNow:64},
-         {key:"INT",abilityNow:61},{key:"WIS",abilityNow:57},{key:"CHA",abilityNow:55}],
-  planets:[{id:"programming",name:"Programming",xp:120},{id:"language-spanish",name:"Spanish",xp:80},
-           {id:"prayer",name:"Prayer",xp:60},{id:"chess-tactics",name:"Chess Tactics",xp:90},
-           {id:"carpentry",name:"Carpentry",xp:70}],
-  // TEST FIXTURE ONLY. A real passport from Origins carries the player's own
-  // Meshy GLB here (avatar.rigged / .walking / .idle / .thumb). This is a
-  // public rigged humanoid from the Khronos glTF sample set, used purely to
-  // prove the import path end to end before a real avatar URL exists. Replace
-  // it with a real one and nothing else has to change.
-  avatar:{rigged:"https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/CesiumMan/glTF-Binary/CesiumMan.glb",
-          walking:"", idle:"", thumb:""}}); }
+      // If you would like all file writes inside Unity Application.persistentDataPath
+      // directory to automatically persist so that the contents are remembered when
+      // the user revisits the site the next time, uncomment the following line:
+      // config.autoSyncPersistentDataPath = true;
+      // This autosyncing is currently not the default behavior to avoid regressing
+      // existing user projects that might rely on the earlier manual
+      // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
+      // expected to change.
 
-try{ document.getElementById('qr').innerHTML='';
-  new QRCode(document.getElementById('qr'),{text:"vmorigins://connect?s="+SESSION+"&g=DEPTHSOFGRACE",
-  width:150,height:150,colorDark:"#0a0710",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M}); }catch(e){}
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // Mobile device style: fill the whole browser client area with the game canvas:
 
-if(FDB){ try{ var un=FDB.collection('pairingSessions').doc(SESSION).onSnapshot(function(s){
-  if(s&&s.exists){var d=s.data(); if(d&&d.status==='connected'&&d.profile){ try{un();}catch(e){} gotProfile(d.profile); }}
-},function(e){}); }catch(e){} }
+        var meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+        document.getElementsByTagName('head')[0].appendChild(meta);
+        document.querySelector("#unity-container").className = "unity-mobile";
+        canvas.className = "unity-mobile";
 
-createUnityInstance(document.querySelector("#unity-canvas"),{
-  dataUrl:"Build/GraceWeb.data.unityweb", frameworkUrl:"Build/GraceWeb.framework.js.unityweb",
-  codeUrl:"Build/GraceWeb.wasm.unityweb", streamingAssetsUrl:"StreamingAssets",
-  companyName:"Virtual Me", productName:"Depths of Grace", productVersion:"0.1.0",
-},function(p){ document.getElementById('load').textContent='Opening the gate… '+Math.round(p*100)+'%';
-}).then(function(u){ unity=u; document.getElementById('load').textContent='The gate is open — scan to descend.'; deliver();
-}).catch(function(e){ document.getElementById('load').textContent='Load error: '+e; });
-</script>
-</body>
+        // To lower canvas resolution on mobile devices to gain some
+        // performance, uncomment the following line:
+        // config.devicePixelRatio = 1;
+
+
+      } else {
+        // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
+        canvas.style.width = "960px";
+        canvas.style.height = "600px";
+      }
+
+      document.querySelector("#unity-loading-bar").style.display = "block";
+
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+              }).then((unityInstance) => {
+                document.querySelector("#unity-loading-bar").style.display = "none";
+                document.querySelector("#unity-fullscreen-button").onclick = () => {
+                  unityInstance.SetFullscreen(1);
+                };
+
+              }).catch((message) => {
+                alert(message);
+              });
+            };
+
+      document.body.appendChild(script);
+
+    </script>
+  </body>
 </html>

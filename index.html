@@ -171,7 +171,57 @@
         devicePixelRatio: VM_DPR,
       }, function (progress) {
         fill.style.width = (progress * 100) + '%';
-      }).then(function () {
+      }).then(function (unityInstance) {
+        // == NAVIGATION BRIDGE (2026-08-08) =================================
+        // Origins draws a NATIVE search list on top of this page and needs to
+        // tell the ALREADY-RUNNING galaxy "fly to this skill". Unity's inbound
+        // channel is unityInstance.SendMessage(object, method, arg) - but this
+        // loader used to THROW THE INSTANCE AWAY (.then took no argument), so
+        // messages could only ever go OUT of the galaxy, never in.
+        //
+        // 'GalaxySpawner' is the scene GameObject (root, active) that
+        // GalaxySpawner.InitEsco() calls AddComponent<EscoUniverse>() on, so
+        // EscoUniverse.FlyToNode(string) - public, one string argument, and
+        // already called from SearchUI / CredentialUpload / UnlockedListPanel,
+        // so the stripper cannot remove it - is reachable by name.
+        // NOTHING IN C# HAD TO CHANGE. Do not "tidy" the two names below.
+        window.unityInstance = unityInstance;
+
+        function vmSend(target, method, arg) {
+          try {
+            if (!window.unityInstance || !window.unityInstance.SendMessage) return false;
+            // A 0-argument C# method must be called with NO third argument or
+            // Unity rejects it, so the two cases are kept apart on purpose.
+            if (arg === undefined) window.unityInstance.SendMessage(target, method);
+            else window.unityInstance.SendMessage(target, method, String(arg));
+            return true;
+          } catch (e) { return false; }
+        }
+
+        function vmTell(obj) {
+          try {
+            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+              window.ReactNativeWebView.postMessage(JSON.stringify(obj));
+            }
+          } catch (e) {}
+        }
+
+        // Fly the camera to a profession (star) or skill (planet) by canonicalId.
+        window.vmFlyTo = function (id) {
+          var ok = !!id && vmSend('GalaxySpawner', 'FlyToNode', id);
+          vmTell({ type: 'vm-fly', id: String(id || ''), sent: !!ok });
+          return ok;
+        };
+
+        // Pull the camera back out to the whole galaxy. CameraController sits on
+        // the 'Main Camera' GameObject and FlyToGalaxyView() takes no arguments.
+        window.vmHome = function () {
+          var ok = vmSend('Main Camera', 'FlyToGalaxyView');
+          vmTell({ type: 'vm-home', sent: !!ok });
+          return ok;
+        };
+        // == end navigation bridge ==========================================
+
         // WATCHDOG: Unity resolved, but did it ever actually DRAW? If the backing
         // store is still the browser default 300x150 well after load, the render
         // loop never ran and the user is staring at black with no idea why.
@@ -186,7 +236,7 @@
         setTimeout(function () { boot.style.display = 'none'; }, 500);
         try {
           if (window.ReactNativeWebView) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'galaxy-ready' }));
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'galaxy-ready', bridge: true }));
           }
         } catch (e) {}
       }).catch(function (message) {

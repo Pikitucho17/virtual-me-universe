@@ -89,7 +89,7 @@
     </div>
     <div id="err"><span id="errtext"></span></div>
 
-    <script src="Build/Web.loader.js?v=202607262224"></script>
+    <script src="Build/Web.loader.js?v=202608081832"></script>
     <script>
       var boot = document.getElementById('boot');
       var fill = document.getElementById('fill');
@@ -160,9 +160,9 @@
 
       createUnityInstance(document.querySelector('#unity-canvas'), {
         arguments: [],
-        dataUrl: 'Build/Web.data.unityweb?v=202607262224',
-        frameworkUrl: 'Build/Web.framework.js.unityweb?v=202607262224',
-        codeUrl: 'Build/Web.wasm.unityweb?v=202607262224',
+        dataUrl: 'Build/Web.data.unityweb?v=202608081832',
+        frameworkUrl: 'Build/Web.framework.js.unityweb?v=202608081832',
+        codeUrl: 'Build/Web.wasm.unityweb?v=202608081832',
         streamingAssetsUrl: 'StreamingAssets',
         companyName: 'MoneyMapGroup',
         productName: 'Virtual Me Universe',
@@ -178,6 +178,9 @@
         // channel is unityInstance.SendMessage(object, method, arg) - but this
         // loader used to THROW THE INSTANCE AWAY (.then took no argument), so
         // messages could only ever go OUT of the galaxy, never in.
+        //
+        // Keeping it costs one word and needs NO UNITY REBUILD: this file is a
+        // plain page on GitHub Pages and Build/* is untouched by publishing it.
         //
         // 'GalaxySpawner' is the scene GameObject (root, active) that
         // GalaxySpawner.InitEsco() calls AddComponent<EscoUniverse>() on, so

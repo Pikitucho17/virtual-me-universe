@@ -89,7 +89,7 @@
     </div>
     <div id="err"><span id="errtext"></span></div>
 
-    <script src="Build/Web.loader.js?v=202608081832"></script>
+    <script src="Build/Web.loader.js?v=202608081958"></script>
     <script>
       var boot = document.getElementById('boot');
       var fill = document.getElementById('fill');
@@ -104,7 +104,18 @@
       // screen this small. Desktop is untouched.
       var VM_IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
         || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
-      var VM_DPR = VM_IS_MOBILE ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      // THE BLURRY LABELS (2026-08-08). This line was the cause, and it was NOT
+      // distance - the owner was right to keep pushing back on that explanation.
+      // At 1 on an iPhone reporting devicePixelRatio 3, the galaxy renders at ONE
+      // THIRD linear resolution, a NINTH of the pixels, and every planet label is
+      // an upscaled blur. Google Maps looks sharp at the same zoom because it
+      // draws at the screen's real resolution.
+      // 1.5 is a deliberate middle: 2.25x the pixels of 1, but well short of the
+      // 2 that killed a tester's iPhone with abort("OOM") on 2026-07-25, which is
+      // why the clamp existed at all. RAISE THIS ONLY WITH A DEVICE TO TEST ON -
+      // the failure mode is a dead black tab, not a slow one. Reverting is a
+      // one-line page publish and needs no Unity rebuild.
+      var VM_DPR = VM_IS_MOBILE ? 1.5 : Math.min(window.devicePixelRatio || 1, 2);
 
       // Unity aborts (including OOM) surface as a raw browser alert() full of wasm
       // stack frames - which is exactly what the tester saw. Intercept it, show our
@@ -160,9 +171,9 @@
 
       createUnityInstance(document.querySelector('#unity-canvas'), {
         arguments: [],
-        dataUrl: 'Build/Web.data.unityweb?v=202608081832',
-        frameworkUrl: 'Build/Web.framework.js.unityweb?v=202608081832',
-        codeUrl: 'Build/Web.wasm.unityweb?v=202608081832',
+        dataUrl: 'Build/Web.data.unityweb?v=202608081958',
+        frameworkUrl: 'Build/Web.framework.js.unityweb?v=202608081958',
+        codeUrl: 'Build/Web.wasm.unityweb?v=202608081958',
         streamingAssetsUrl: 'StreamingAssets',
         companyName: 'MoneyMapGroup',
         productName: 'Virtual Me Universe',
